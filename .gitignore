@@ -1,0 +1,16 @@
+# Tokens OAuth2 (nunca versionar)
+credentials/token_gmail.json
+credentials/token_drive.json
+
+# Dados locais
+attachments/
+agendas/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+*.egg-info/
+dist/
+build/

@@ -1,0 +1,18 @@
+[
+  {
+    "id": "48f2b315",
+    "title": "limpa o quarto",
+    "source": "manual",
+    "status": "pendente",
+    "created_at": "2026-05-09T17:58:51",
+    "due_date": null
+  },
+  {
+    "id": "9df3e9ba",
+    "title": "joga games",
+    "source": "manual",
+    "status": "pendente",
+    "created_at": "2026-05-09T18:01:30",
+    "due_date": null
+  }
+]
