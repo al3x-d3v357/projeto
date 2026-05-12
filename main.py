@@ -8,6 +8,11 @@ import task_manager
 import bill_reminder
 import file_organizer
 import agenda_generator
+from config import (
+    EMAIL_AUTOMATION_ENABLED,
+    DRIVE_UPLOAD_ENABLED,
+    SCHEDULER_EMAIL_INTERVAL_HOURS,
+)
 
 
 # ─── Scheduler em background ────────────────────────────────────────────────
@@ -21,18 +26,25 @@ def _run_scheduler():
 def _setup_scheduler():
     """Define jobs automáticos periódicos."""
     schedule.every().day.at("08:00").do(bill_reminder.check_bills)
-    schedule.every().hour.do(_safe_read_emails)
+    if EMAIL_AUTOMATION_ENABLED:
+        schedule.every(SCHEDULER_EMAIL_INTERVAL_HOURS).hours.do(_safe_read_emails)
     schedule.every().monday.at("07:00").do(agenda_generator.generate_agenda)
     t = threading.Thread(target=_run_scheduler, daemon=True)
     t.start()
     print("[Scheduler] Agendador iniciado em background.")
+    if not EMAIL_AUTOMATION_ENABLED:
+        print("[Scheduler] Leitura automática de e-mails desativada por configuração.")
 
 
 def _safe_read_emails():
+    if not EMAIL_AUTOMATION_ENABLED:
+        return
     try:
         import email_reader
-        result = email_reader.read_emails()
-        if result["attachments_saved"]:
+        result = email_reader.read_emails(verbose=False)
+        if result.get("status") != "ok":
+            return
+        if DRIVE_UPLOAD_ENABLED and result["attachments_saved"]:
             import drive_uploader
             drive_uploader.upload_attachments(result["attachments_saved"])
     except Exception as e:

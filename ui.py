@@ -1,6 +1,7 @@
 import customtkinter as ctk
 from datetime import date
 import threading
+from datetime import datetime
 
 import task_manager
 import bill_reminder
@@ -120,6 +121,7 @@ class TarefasFrame(ctk.CTkFrame):
 
     def _build(self):
         section_title(self, "✅  Tarefas")
+        self._status = status_label(self)
 
         # Entrada de nova tarefa
         card = card_frame(self)
@@ -136,7 +138,8 @@ class TarefasFrame(ctk.CTkFrame):
                                   width=180, height=36, font=ctk.CTkFont(size=13))
         self._due.pack(side="left", padx=(0, 8))
 
-        action_btn(row, "+ Adicionar", self._add_task).pack(side="left")
+        self._add_btn = action_btn(row, "+ Adicionar", self._add_task)
+        self._add_btn.pack(side="left")
 
         # Lista de tarefas
         self._list_frame = ctk.CTkScrollableFrame(self, fg_color=BG_DARK, corner_radius=0)
@@ -195,11 +198,19 @@ class TarefasFrame(ctk.CTkFrame):
         title = self._entry.get().strip()
         due   = self._due.get().strip() or None
         if not title:
+            self._status.configure(text="Digite um título para a tarefa.")
             return
+        if due:
+            try:
+                datetime.strptime(due, "%Y-%m-%d")
+            except ValueError:
+                self._status.configure(text="Data inválida. Use YYYY-MM-DD.")
+                return
         task_manager.add_task(title=title, due_date=due)
         self._entry.delete(0, "end")
         self._due.delete(0, "end")
         self._refresh_list()
+        self._status.configure(text="Tarefa adicionada com sucesso.")
 
     def _complete(self, tid):
         task_manager.complete_task(tid)
@@ -296,8 +307,10 @@ class DownloadsFrame(ctk.CTkFrame):
 
         btns = ctk.CTkFrame(self, fg_color="transparent")
         btns.pack(anchor="w", padx=28, pady=(0, 16))
-        action_btn(btns, "👁  Pré-visualizar", self._preview, color=ACCENT).pack(side="left", padx=(0, 10))
-        action_btn(btns, "🚀  Organizar agora", self._organize).pack(side="left")
+        self._btn_preview = action_btn(btns, "👁  Pré-visualizar", self._preview, color=ACCENT)
+        self._btn_preview.pack(side="left", padx=(0, 10))
+        self._btn_organize = action_btn(btns, "🚀  Organizar agora", self._organize)
+        self._btn_organize.pack(side="left")
 
         self._log = ctk.CTkTextbox(self, state="disabled", fg_color=BG_CARD,
                                     font=ctk.CTkFont(family="Consolas", size=12),
@@ -310,7 +323,13 @@ class DownloadsFrame(ctk.CTkFrame):
         self._log.see("end")
         self._log.configure(state="disabled")
 
+    def _set_busy(self, is_busy: bool):
+        state = "disabled" if is_busy else "normal"
+        self._btn_preview.configure(state=state)
+        self._btn_organize.configure(state=state)
+
     def _preview(self):
+        self._set_busy(True)
         self._log.configure(state="normal")
         self._log.delete("1.0", "end")
         self._log.configure(state="disabled")
@@ -319,26 +338,33 @@ class DownloadsFrame(ctk.CTkFrame):
             import io, sys
             buf = io.StringIO()
             old = sys.stdout
-            sys.stdout = buf
-            file_organizer.organize_downloads(dry_run=True)
-            sys.stdout = old
+            try:
+                sys.stdout = buf
+                file_organizer.organize_downloads(dry_run=True)
+            finally:
+                sys.stdout = old
             output = buf.getvalue()
             self.after(0, lambda: self._log_write(output))
             self.after(0, lambda: self._status.configure(text="Pré-visualização concluída."))
+            self.after(0, lambda: self._set_busy(False))
         threading.Thread(target=run, daemon=True).start()
 
     def _organize(self):
+        self._set_busy(True)
         self._status.configure(text="Organizando...")
         def run():
             import io, sys
             buf = io.StringIO()
             old = sys.stdout
-            sys.stdout = buf
-            file_organizer.organize_downloads(dry_run=False)
-            sys.stdout = old
+            try:
+                sys.stdout = buf
+                file_organizer.organize_downloads(dry_run=False)
+            finally:
+                sys.stdout = old
             output = buf.getvalue()
             self.after(0, lambda: self._log_write(output))
             self.after(0, lambda: self._status.configure(text="Concluído."))
+            self.after(0, lambda: self._set_busy(False))
         threading.Thread(target=run, daemon=True).start()
 
 
@@ -368,8 +394,10 @@ class EmailsFrame(ctk.CTkFrame):
 
         btns = ctk.CTkFrame(self, fg_color="transparent")
         btns.pack(anchor="w", padx=28, pady=(0, 16))
-        action_btn(btns, "📬  Ler e-mails", self._read).pack(side="left", padx=(0, 10))
-        action_btn(btns, "☁  Upload Drive", self._upload, color="#0369a1").pack(side="left")
+        self._btn_read = action_btn(btns, "📬  Ler e-mails", self._read)
+        self._btn_read.pack(side="left", padx=(0, 10))
+        self._btn_upload = action_btn(btns, "☁  Upload Drive", self._upload, color="#0369a1")
+        self._btn_upload.pack(side="left")
 
         self._log = ctk.CTkTextbox(self, state="disabled", fg_color=BG_CARD,
                                     font=ctk.CTkFont(family="Consolas", size=12),
@@ -382,38 +410,51 @@ class EmailsFrame(ctk.CTkFrame):
         self._log.see("end")
         self._log.configure(state="disabled")
 
+    def _set_busy(self, is_busy: bool):
+        state = "disabled" if is_busy else "normal"
+        self._btn_read.configure(state=state)
+        self._btn_upload.configure(state=state)
+
     def _read(self):
+        self._set_busy(True)
         self._status.configure(text="Conectando ao Gmail...")
         def run():
             import io, sys
             buf = io.StringIO()
-            old = sys.stdout; sys.stdout = buf
+            old = sys.stdout
             try:
+                sys.stdout = buf
                 import email_reader
                 email_reader.read_emails()
             except Exception as e:
                 print(f"Erro: {e}")
-            sys.stdout = old
+            finally:
+                sys.stdout = old
             output = buf.getvalue()
             self.after(0, lambda: self._log_write(output))
             self.after(0, lambda: self._status.configure(text="Concluído."))
+            self.after(0, lambda: self._set_busy(False))
         threading.Thread(target=run, daemon=True).start()
 
     def _upload(self):
+        self._set_busy(True)
         self._status.configure(text="Enviando ao Drive...")
         def run():
             import io, sys
             buf = io.StringIO()
-            old = sys.stdout; sys.stdout = buf
+            old = sys.stdout
             try:
+                sys.stdout = buf
                 import drive_uploader
                 drive_uploader.upload_attachments()
             except Exception as e:
                 print(f"Erro: {e}")
-            sys.stdout = old
+            finally:
+                sys.stdout = old
             output = buf.getvalue()
             self.after(0, lambda: self._log_write(output))
             self.after(0, lambda: self._status.configure(text="Concluído."))
+            self.after(0, lambda: self._set_busy(False))
         threading.Thread(target=run, daemon=True).start()
 
 

@@ -46,6 +46,13 @@ FILE_CATEGORIES = {
 GMAIL_SCOPES  = ["https://www.googleapis.com/auth/gmail.readonly"]
 DRIVE_SCOPES  = ["https://www.googleapis.com/auth/drive.file"]
 
+# Flags de integração opcional
+EMAIL_AUTOMATION_ENABLED = True
+DRIVE_UPLOAD_ENABLED = True
+
+# Intervalo em horas para leitura automática de e-mails no scheduler
+SCHEDULER_EMAIL_INTERVAL_HOURS = 1
+
 os.makedirs(ATTACHMENTS_DIR, exist_ok=True)
 os.makedirs(AGENDA_DIR, exist_ok=True)
 os.makedirs(CREDENTIALS_DIR, exist_ok=True)

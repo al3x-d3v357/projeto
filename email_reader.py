@@ -11,6 +11,10 @@ from config import (
 import task_manager
 
 
+def is_gmail_configured() -> bool:
+    return os.path.exists(CREDENTIALS_FILE)
+
+
 def _get_gmail_service():
     creds = None
     if os.path.exists(TOKEN_GMAIL_FILE):
@@ -72,60 +76,69 @@ def _save_attachment(service, message_id: str, part: dict) -> str | None:
     return filepath
 
 
-def read_emails(max_results: int = 20) -> dict:
+def read_emails(max_results: int = 20, verbose: bool = True) -> dict:
     """
     Lê e-mails não lidos do Gmail.
     - Cria tarefas automaticamente quando detecta palavras-chave.
     - Baixa anexos para a pasta local.
     Retorna dict com 'tasks_created' e 'attachments_saved'.
     """
-    if not os.path.exists(CREDENTIALS_FILE):
-        print("[Gmail] credentials.json não encontrado em credentials/.")
-        print("[Gmail] Siga as instruções em SETUP.md para configurar o OAuth2.")
-        return {"tasks_created": [], "attachments_saved": []}
+    if not is_gmail_configured():
+        if verbose:
+            print("[Gmail] credentials.json não encontrado em credentials/.")
+            print("[Gmail] Configure OAuth2 para habilitar a automação de e-mail.")
+        return {"tasks_created": [], "attachments_saved": [], "status": "not_configured"}
 
-    service = _get_gmail_service()
+    try:
+        service = _get_gmail_service()
 
-    results = service.users().messages().list(
-        userId="me", labelIds=["UNREAD"], maxResults=max_results
-    ).execute()
-    messages = results.get("messages", [])
-
-    tasks_created = []
-    attachments_saved = []
-
-    for msg_meta in messages:
-        msg = service.users().messages().get(
-            userId="me", messageId=msg_meta["id"], format="full"
+        results = service.users().messages().list(
+            userId="me", labelIds=["UNREAD"], maxResults=max_results
         ).execute()
+        messages = results.get("messages", [])
 
-        headers = {h["name"]: h["value"] for h in msg["payload"].get("headers", [])}
-        subject = headers.get("Subject", "(sem assunto)")
-        sender = headers.get("From", "desconhecido")
-        body = _extract_body(msg["payload"])
-        content = (subject + " " + body).lower()
+        tasks_created = []
+        attachments_saved = []
 
-        # Detecta palavras-chave e cria tarefa
-        matched = [kw for kw in TASK_KEYWORDS if kw in content]
-        if matched:
-            title = f"[Email] {subject[:80]}"
-            task = task_manager.add_task(title=title, source=f"gmail:{sender}")
-            tasks_created.append(task)
-            print(f"[Gmail] Tarefa criada: {title}  (palavras: {matched})")
+        for msg_meta in messages:
+            msg = service.users().messages().get(
+                userId="me", messageId=msg_meta["id"], format="full"
+            ).execute()
 
-        # Baixa anexos
-        parts = msg["payload"].get("parts", [])
-        for part in parts:
-            if part.get("filename") and part["filename"].strip():
-                path = _save_attachment(service, msg_meta["id"], part)
-                if path:
-                    attachments_saved.append(path)
-                    print(f"[Gmail] Anexo salvo: {os.path.basename(path)}")
+            headers = {h["name"]: h["value"] for h in msg["payload"].get("headers", [])}
+            subject = headers.get("Subject", "(sem assunto)")
+            sender = headers.get("From", "desconhecido")
+            body = _extract_body(msg["payload"])
+            content = (subject + " " + body).lower()
 
-    print(f"[Gmail] {len(messages)} e-mail(s) lido(s). "
-          f"{len(tasks_created)} tarefa(s) criada(s). "
-          f"{len(attachments_saved)} anexo(s) salvo(s).")
-    return {"tasks_created": tasks_created, "attachments_saved": attachments_saved}
+            # Detecta palavras-chave e cria tarefa
+            matched = [kw for kw in TASK_KEYWORDS if kw in content]
+            if matched:
+                title = f"[Email] {subject[:80]}"
+                task = task_manager.add_task(title=title, source=f"gmail:{sender}")
+                tasks_created.append(task)
+                if verbose:
+                    print(f"[Gmail] Tarefa criada: {title}  (palavras: {matched})")
+
+            # Baixa anexos
+            parts = msg["payload"].get("parts", [])
+            for part in parts:
+                if part.get("filename") and part["filename"].strip():
+                    path = _save_attachment(service, msg_meta["id"], part)
+                    if path:
+                        attachments_saved.append(path)
+                        if verbose:
+                            print(f"[Gmail] Anexo salvo: {os.path.basename(path)}")
+
+        if verbose:
+            print(f"[Gmail] {len(messages)} e-mail(s) lido(s). "
+                  f"{len(tasks_created)} tarefa(s) criada(s). "
+                  f"{len(attachments_saved)} anexo(s) salvo(s).")
+        return {"tasks_created": tasks_created, "attachments_saved": attachments_saved, "status": "ok"}
+    except Exception as e:
+        if verbose:
+            print(f"[Gmail] Erro ao processar e-mails: {e}")
+        return {"tasks_created": [], "attachments_saved": [], "status": "error", "error": str(e)}
 
 
 if __name__ == "__main__":
