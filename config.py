@@ -1,6 +1,13 @@
 import os
+import sys
+import json
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Em modo executável (PyInstaller), usa a pasta do .exe.
+# Em modo desenvolvimento, usa a pasta do projeto.
+if getattr(sys, "frozen", False):
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Pasta monitorada pelo organizador de arquivos
 DOWNLOADS_DIR = os.path.join(os.path.expanduser("~"), "Downloads")
@@ -11,8 +18,17 @@ ATTACHMENTS_DIR = os.path.join(BASE_DIR, "attachments")
 # Arquivo de tarefas
 TASKS_FILE = os.path.join(BASE_DIR, "tasks.json")
 
+# Arquivo de hábitos
+HABITS_FILE = os.path.join(BASE_DIR, "habits.json")
+
+# Arquivo de lista de compras
+SHOPPING_FILE = os.path.join(BASE_DIR, "shopping_list.json")
+
 # Arquivo de contas a pagar
 BILLS_FILE = os.path.join(BASE_DIR, "bills.csv")
+
+# Histórico de lembretes enviados para evitar duplicidade no mesmo dia
+REMINDER_HISTORY_FILE = os.path.join(BASE_DIR, "reminder_history.json")
 
 # Pasta de saída das agendas semanais
 AGENDA_DIR = os.path.join(BASE_DIR, "agendas")
@@ -56,3 +72,30 @@ SCHEDULER_EMAIL_INTERVAL_HOURS = 1
 os.makedirs(ATTACHMENTS_DIR, exist_ok=True)
 os.makedirs(AGENDA_DIR, exist_ok=True)
 os.makedirs(CREDENTIALS_DIR, exist_ok=True)
+
+
+def _ensure_default_files() -> None:
+    if not os.path.exists(TASKS_FILE):
+        with open(TASKS_FILE, "w", encoding="utf-8") as f:
+            json.dump([], f, ensure_ascii=False, indent=2)
+
+    if not os.path.exists(HABITS_FILE):
+        with open(HABITS_FILE, "w", encoding="utf-8") as f:
+            json.dump([], f, ensure_ascii=False, indent=2)
+
+    if not os.path.exists(SHOPPING_FILE):
+        with open(SHOPPING_FILE, "w", encoding="utf-8") as f:
+            json.dump([], f, ensure_ascii=False, indent=2)
+
+    if not os.path.exists(BILLS_FILE):
+        default_bills = (
+            "nome,valor,vencimento\n"
+            "Internet,99.90,2026-05-15\n"
+            "Energia Elétrica,180.00,2026-05-18\n"
+            "Aluguel,1200.00,2026-05-10\n"
+        )
+        with open(BILLS_FILE, "w", encoding="utf-8") as f:
+            f.write(default_bills)
+
+
+_ensure_default_files()

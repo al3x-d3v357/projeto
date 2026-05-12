@@ -5,6 +5,7 @@ credentials/token_drive.json
 # Dados locais
 attachments/
 agendas/
+reminder_history.json
 
 # Python
 __pycache__/

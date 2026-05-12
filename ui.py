@@ -7,6 +7,8 @@ import task_manager
 import bill_reminder
 import file_organizer
 import agenda_generator
+import habits_manager
+import shopping_list_manager
 
 # ── Tema global ──────────────────────────────────────────────────────────────
 ctk.set_appearance_mode("dark")
@@ -30,7 +32,20 @@ class App(ctk.CTk):
 
         self._build_sidebar()
         self._build_frames()
+        self._start_habits_loop()
         self._show_frame("tarefas")
+
+    def _start_habits_loop(self):
+        def run():
+            while True:
+                try:
+                    habits_manager.check_habits_and_notify(verbose=False)
+                except Exception:
+                    pass
+                # Verifica hábitos uma vez por minuto
+                import time
+                time.sleep(60)
+        threading.Thread(target=run, daemon=True).start()
 
     # ── Sidebar ──────────────────────────────────────────────────────────────
     def _build_sidebar(self):
@@ -50,6 +65,8 @@ class App(ctk.CTk):
             ("downloads",  "📁  Downloads"),
             ("emails",     "📧  E-mails"),
             ("agenda",     "📅  Agenda"),
+            ("habitos",    "⏰  Hábitos"),
+            ("compras",    "🛒  Compras"),
         ]
         for key, label in nav_items:
             btn = ctk.CTkButton(
@@ -76,6 +93,8 @@ class App(ctk.CTk):
             "downloads": DownloadsFrame(self.main_area),
             "emails":    EmailsFrame(self.main_area),
             "agenda":    AgendaFrame(self.main_area),
+            "habitos":   HabitosFrame(self.main_area),
+            "compras":   ComprasFrame(self.main_area),
         }
         for frame in self.frames.values():
             frame.place(relx=0, rely=0, relwidth=1, relheight=1)
@@ -123,6 +142,38 @@ class TarefasFrame(ctk.CTkFrame):
         section_title(self, "✅  Tarefas")
         self._status = status_label(self)
 
+        controls = ctk.CTkFrame(self, fg_color="transparent")
+        controls.pack(fill="x", padx=24, pady=(0, 8))
+
+        ctk.CTkLabel(controls, text="Filtro:", text_color=TEXT_SEC).pack(side="left", padx=(0, 8))
+        self._filter_var = ctk.StringVar(value="Pendentes")
+        self._filter_menu = ctk.CTkOptionMenu(
+            controls,
+            values=["Todas", "Pendentes", "Concluídas", "Sem data", "Vencidas", "Hoje", "Próx. 7 dias"],
+            variable=self._filter_var,
+            command=lambda _: self._refresh_list(),
+            width=150,
+        )
+        self._filter_menu.pack(side="left", padx=(0, 12))
+
+        self._sort_switch = ctk.CTkSwitch(
+            controls,
+            text="Ordenar por vencimento",
+            command=self._refresh_list,
+        )
+        self._sort_switch.select()
+        self._sort_switch.pack(side="left", padx=(0, 8))
+
+        ctk.CTkButton(
+            controls,
+            text="Atualizar",
+            width=90,
+            height=30,
+            fg_color=ACCENT,
+            hover_color="#0b2747",
+            command=self._refresh_list,
+        ).pack(side="left")
+
         # Entrada de nova tarefa
         card = card_frame(self)
         card.pack(fill="x", padx=24, pady=(0, 16))
@@ -151,9 +202,31 @@ class TarefasFrame(ctk.CTkFrame):
         for w in self._list_frame.winfo_children():
             w.destroy()
 
-        tasks = task_manager.list_tasks()
+        selected = self._filter_var.get()
+        status_filter = None
+        due_filter = None
+
+        if selected == "Pendentes":
+            status_filter = "pendente"
+        elif selected == "Concluídas":
+            status_filter = "concluída"
+        elif selected == "Sem data":
+            due_filter = "without_due"
+        elif selected == "Vencidas":
+            due_filter = "overdue"
+        elif selected == "Hoje":
+            due_filter = "today"
+        elif selected == "Próx. 7 dias":
+            due_filter = "upcoming7"
+
+        tasks = task_manager.list_tasks(
+            status_filter=status_filter,
+            due_filter=due_filter,
+            sort_by_due=(self._sort_switch.get() == 1),
+        )
+
         if not tasks:
-            ctk.CTkLabel(self._list_frame, text="Nenhuma tarefa cadastrada.",
+            ctk.CTkLabel(self._list_frame, text="Nenhuma tarefa encontrada para o filtro selecionado.",
                          text_color=TEXT_SEC).pack(pady=20)
             return
 
@@ -517,6 +590,231 @@ class AgendaFrame(ctk.CTkFrame):
             path = agenda_generator.generate_agenda(ref)
             self.after(0, lambda: self._show_file(path))
         threading.Thread(target=run, daemon=True).start()
+
+
+# ── Frame: Hábitos ───────────────────────────────────────────────────────────
+class HabitosFrame(ctk.CTkFrame):
+    def __init__(self, master):
+        super().__init__(master, fg_color=BG_DARK, corner_radius=0)
+
+    def on_show(self):
+        for w in self.winfo_children():
+            w.destroy()
+        self._build()
+
+    def _build(self):
+        section_title(self, "⏰  Lembretes de Hábitos")
+        self._status = status_label(self)
+
+        card = card_frame(self)
+        card.pack(fill="x", padx=24, pady=(0, 16))
+
+        row = ctk.CTkFrame(card, fg_color="transparent")
+        row.pack(fill="x", padx=16, pady=14)
+
+        self._title = ctk.CTkEntry(row, placeholder_text="Hábito (água, remédio, alongar)",
+                                   height=36, font=ctk.CTkFont(size=13))
+        self._title.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        self._interval = ctk.CTkEntry(row, placeholder_text="Intervalo min", width=120,
+                                      height=36, font=ctk.CTkFont(size=13))
+        self._interval.insert(0, "120")
+        self._interval.pack(side="left", padx=(0, 8))
+
+        action_btn(row, "+ Adicionar", self._add).pack(side="left")
+
+        self._list = ctk.CTkScrollableFrame(self, fg_color=BG_DARK, corner_radius=0)
+        self._list.pack(fill="both", expand=True, padx=24)
+
+        self._refresh()
+
+    def _refresh(self):
+        for w in self._list.winfo_children():
+            w.destroy()
+
+        habits = habits_manager.list_habits()
+        if not habits:
+            ctk.CTkLabel(self._list, text="Nenhum hábito cadastrado.", text_color=TEXT_SEC).pack(pady=20)
+            return
+
+        for h in habits:
+            row = ctk.CTkFrame(self._list, fg_color=BG_CARD, corner_radius=8, height=52)
+            row.pack(fill="x", pady=4)
+            row.pack_propagate(False)
+
+            state_txt = "Ativo" if h.get("enabled", True) else "Pausado"
+            state_color = "#4ade80" if h.get("enabled", True) else "#f59e0b"
+
+            ctk.CTkLabel(row, text=h["title"], text_color="white",
+                         font=ctk.CTkFont(size=13, weight="bold")).pack(side="left", padx=(12, 8))
+            ctk.CTkLabel(row, text=f"a cada {h.get('interval_minutes', 120)} min",
+                         text_color=TEXT_SEC, font=ctk.CTkFont(size=12)).pack(side="left")
+            ctk.CTkLabel(row, text=state_txt, text_color=state_color,
+                         font=ctk.CTkFont(size=12, weight="bold")).pack(side="right", padx=8)
+
+            ctk.CTkButton(
+                row, text="Lembrar agora", width=95, height=28,
+                fg_color=ACCENT, hover_color="#0b2747", font=ctk.CTkFont(size=11),
+                command=lambda hid=h["id"]: self._remind_now(hid),
+            ).pack(side="right", padx=4)
+
+            ctk.CTkButton(
+                row, text="Ativar/Pausar", width=95, height=28,
+                fg_color="#374151", hover_color="#4b5563", font=ctk.CTkFont(size=11),
+                command=lambda hid=h["id"]: self._toggle(hid),
+            ).pack(side="right", padx=4)
+
+            ctk.CTkButton(
+                row, text="✕", width=30, height=28,
+                fg_color="#374151", hover_color="#6b7280", font=ctk.CTkFont(size=11),
+                command=lambda hid=h["id"]: self._delete(hid),
+            ).pack(side="right", padx=4)
+
+    def _add(self):
+        title = self._title.get().strip()
+        interval_raw = self._interval.get().strip() or "120"
+        if not title:
+            self._status.configure(text="Digite o nome do hábito.")
+            return
+        try:
+            interval = int(interval_raw)
+            if interval <= 0:
+                raise ValueError
+        except ValueError:
+            self._status.configure(text="Intervalo inválido. Use minutos (ex: 120).")
+            return
+
+        habits_manager.add_habit(title=title, interval_minutes=interval)
+        self._title.delete(0, "end")
+        self._interval.delete(0, "end")
+        self._interval.insert(0, "120")
+        self._status.configure(text="Hábito adicionado.")
+        self._refresh()
+
+    def _toggle(self, hid):
+        habits_manager.toggle_habit(hid)
+        self._status.configure(text="Estado do hábito atualizado.")
+        self._refresh()
+
+    def _delete(self, hid):
+        habits_manager.delete_habit(hid)
+        self._status.configure(text="Hábito removido.")
+        self._refresh()
+
+    def _remind_now(self, hid):
+        if habits_manager.send_habit_reminder_now(hid):
+            self._status.configure(text="Lembrete manual enviado.")
+        else:
+            self._status.configure(text="Não foi possível enviar o lembrete.")
+        self._refresh()
+
+
+# ── Frame: Compras ───────────────────────────────────────────────────────────
+class ComprasFrame(ctk.CTkFrame):
+    def __init__(self, master):
+        super().__init__(master, fg_color=BG_DARK, corner_radius=0)
+
+    def on_show(self):
+        for w in self.winfo_children():
+            w.destroy()
+        self._build()
+
+    def _build(self):
+        section_title(self, "🛒  Lista de Compras")
+        self._status = status_label(self)
+
+        card = card_frame(self)
+        card.pack(fill="x", padx=24, pady=(0, 16))
+
+        row = ctk.CTkFrame(card, fg_color="transparent")
+        row.pack(fill="x", padx=16, pady=14)
+
+        self._name = ctk.CTkEntry(row, placeholder_text="Item (arroz, leite, sabão)",
+                                  height=36, font=ctk.CTkFont(size=13))
+        self._name.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        self._qty = ctk.CTkEntry(row, placeholder_text="Qtd", width=100,
+                                 height=36, font=ctk.CTkFont(size=13))
+        self._qty.insert(0, "1")
+        self._qty.pack(side="left", padx=(0, 8))
+
+        action_btn(row, "+ Adicionar", self._add).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(
+            row, text="Limpar comprados", width=130, height=36,
+            fg_color=ACCENT, hover_color="#0b2747", command=self._clear_checked,
+        ).pack(side="left")
+
+        self._list = ctk.CTkScrollableFrame(self, fg_color=BG_DARK, corner_radius=0)
+        self._list.pack(fill="both", expand=True, padx=24)
+
+        self._refresh()
+
+    def _refresh(self):
+        for w in self._list.winfo_children():
+            w.destroy()
+
+        items = shopping_list_manager.list_items()
+        if not items:
+            ctk.CTkLabel(self._list, text="Sua lista está vazia.", text_color=TEXT_SEC).pack(pady=20)
+            return
+
+        # Não comprados primeiro
+        items.sort(key=lambda i: (i.get("checked", False), i.get("name", "").lower()))
+
+        for item in items:
+            row = ctk.CTkFrame(self._list, fg_color=BG_CARD, corner_radius=8, height=48)
+            row.pack(fill="x", pady=4)
+            row.pack_propagate(False)
+
+            checked = item.get("checked", False)
+            icon = "✓" if checked else "○"
+            color = "#4ade80" if checked else "white"
+
+            ctk.CTkLabel(row, text=icon, text_color=color,
+                         font=ctk.CTkFont(size=16, weight="bold"), width=30).pack(side="left", padx=(12, 0))
+            ctk.CTkLabel(row, text=f"{item['name']}  (x{item.get('quantity', '1')})",
+                         text_color=color if checked else "white",
+                         font=ctk.CTkFont(size=13)).pack(side="left", padx=10, fill="x", expand=True)
+
+            ctk.CTkButton(
+                row, text="Marcar", width=70, height=28,
+                fg_color="#16a34a", hover_color="#15803d", font=ctk.CTkFont(size=11),
+                command=lambda iid=item["id"]: self._toggle(iid),
+            ).pack(side="left", padx=4)
+
+            ctk.CTkButton(
+                row, text="✕", width=30, height=28,
+                fg_color="#374151", hover_color="#6b7280", font=ctk.CTkFont(size=11),
+                command=lambda iid=item["id"]: self._delete(iid),
+            ).pack(side="left", padx=(0, 10))
+
+    def _add(self):
+        name = self._name.get().strip()
+        qty = self._qty.get().strip() or "1"
+        if not name:
+            self._status.configure(text="Digite o nome do item.")
+            return
+        shopping_list_manager.add_item(name=name, quantity=qty)
+        self._name.delete(0, "end")
+        self._qty.delete(0, "end")
+        self._qty.insert(0, "1")
+        self._status.configure(text="Item adicionado.")
+        self._refresh()
+
+    def _toggle(self, iid):
+        shopping_list_manager.toggle_item(iid)
+        self._status.configure(text="Item atualizado.")
+        self._refresh()
+
+    def _delete(self, iid):
+        shopping_list_manager.delete_item(iid)
+        self._status.configure(text="Item removido.")
+        self._refresh()
+
+    def _clear_checked(self):
+        removed = shopping_list_manager.clear_checked()
+        self._status.configure(text=f"{removed} item(ns) comprado(s) removido(s).")
+        self._refresh()
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

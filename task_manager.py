@@ -1,6 +1,6 @@
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, date
 from config import TASKS_FILE
 
 
@@ -55,11 +55,58 @@ def delete_task(task_id: str) -> bool:
     return True
 
 
-def list_tasks(status_filter: str = None) -> list:
-    """Lista tarefas. Filtra por status se informado ('pendente' ou 'concluída')."""
+def _parse_due_date(value: str):
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def list_tasks(status_filter: str = None, due_filter: str = None, sort_by_due: bool = False) -> list:
+    """
+    Lista tarefas com filtros opcionais.
+    - status_filter: 'pendente' ou 'concluída'
+    - due_filter: 'with_due', 'without_due', 'overdue', 'today', 'upcoming7'
+    - sort_by_due: ordena por vencimento (sem data vão para o fim)
+    """
     tasks = _load()
     if status_filter:
         tasks = [t for t in tasks if t["status"] == status_filter]
+
+    if due_filter:
+        today = date.today()
+
+        if due_filter == "with_due":
+            tasks = [t for t in tasks if _parse_due_date(t.get("due_date")) is not None]
+        elif due_filter == "without_due":
+            tasks = [t for t in tasks if _parse_due_date(t.get("due_date")) is None]
+        elif due_filter == "overdue":
+            tasks = [
+                t for t in tasks
+                if (_parse_due_date(t.get("due_date")) is not None and _parse_due_date(t.get("due_date")) < today)
+            ]
+        elif due_filter == "today":
+            tasks = [t for t in tasks if _parse_due_date(t.get("due_date")) == today]
+        elif due_filter == "upcoming7":
+            tasks = [
+                t for t in tasks
+                if (
+                    _parse_due_date(t.get("due_date")) is not None
+                    and 0 <= (_parse_due_date(t.get("due_date")) - today).days <= 7
+                )
+            ]
+
+    if sort_by_due:
+        tasks.sort(
+            key=lambda t: (
+                _parse_due_date(t.get("due_date")) is None,
+                _parse_due_date(t.get("due_date")) or date.max,
+                t.get("created_at") or "",
+            )
+        )
+
     return tasks
 
 
