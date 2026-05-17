@@ -12,9 +12,6 @@ else:
 # Pasta monitorada pelo organizador de arquivos
 DOWNLOADS_DIR = os.path.join(os.path.expanduser("~"), "Downloads")
 
-# Pasta onde os anexos de e-mail são salvos localmente antes do upload
-ATTACHMENTS_DIR = os.path.join(BASE_DIR, "attachments")
-
 # Arquivo de tarefas
 TASKS_FILE = os.path.join(BASE_DIR, "tasks.json")
 
@@ -33,20 +30,8 @@ REMINDER_HISTORY_FILE = os.path.join(BASE_DIR, "reminder_history.json")
 # Pasta de saída das agendas semanais
 AGENDA_DIR = os.path.join(BASE_DIR, "agendas")
 
-# Pasta de credenciais OAuth2 (NÃO versionar)
-CREDENTIALS_DIR = os.path.join(BASE_DIR, "credentials")
-CREDENTIALS_FILE = os.path.join(CREDENTIALS_DIR, "credentials.json")
-TOKEN_GMAIL_FILE = os.path.join(CREDENTIALS_DIR, "token_gmail.json")
-TOKEN_DRIVE_FILE = os.path.join(CREDENTIALS_DIR, "token_drive.json")
-
 # Quantos dias antes do vencimento emitir o lembrete
 BILL_REMINDER_DAYS = 3
-
-# Palavras-chave nos e-mails que indicam uma tarefa
-TASK_KEYWORDS = ["urgente", "prazo", "confirmar", "responder", "pendente", "deadline", "até quando"]
-
-# Nome da pasta no Google Drive para upload dos anexos
-DRIVE_FOLDER_NAME = "Anexos-Emails"
 
 # Mapeamento de extensões para subpastas no organizador
 FILE_CATEGORIES = {
@@ -58,20 +43,7 @@ FILE_CATEGORIES = {
     "Codigo":     [".py", ".js", ".ts", ".html", ".css", ".json", ".xml", ".csv"],
 }
 
-# Escopos OAuth2 necessários
-GMAIL_SCOPES  = ["https://www.googleapis.com/auth/gmail.readonly"]
-DRIVE_SCOPES  = ["https://www.googleapis.com/auth/drive.file"]
-
-# Flags de integração opcional
-EMAIL_AUTOMATION_ENABLED = True
-DRIVE_UPLOAD_ENABLED = True
-
-# Intervalo em horas para leitura automática de e-mails no scheduler
-SCHEDULER_EMAIL_INTERVAL_HOURS = 1
-
-os.makedirs(ATTACHMENTS_DIR, exist_ok=True)
 os.makedirs(AGENDA_DIR, exist_ok=True)
-os.makedirs(CREDENTIALS_DIR, exist_ok=True)
 
 
 def _ensure_default_files() -> None:

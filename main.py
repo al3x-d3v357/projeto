@@ -10,11 +10,6 @@ import file_organizer
 import agenda_generator
 import habits_manager
 import shopping_list_manager
-from config import (
-    EMAIL_AUTOMATION_ENABLED,
-    DRIVE_UPLOAD_ENABLED,
-    SCHEDULER_EMAIL_INTERVAL_HOURS,
-)
 
 
 # ─── Scheduler em background ────────────────────────────────────────────────
@@ -29,36 +24,17 @@ def _setup_scheduler():
     """Define jobs automáticos periódicos."""
     schedule.every().day.at("08:00").do(bill_reminder.check_bills)
     schedule.every(30).minutes.do(lambda: habits_manager.check_habits_and_notify(verbose=False))
-    if EMAIL_AUTOMATION_ENABLED:
-        schedule.every(SCHEDULER_EMAIL_INTERVAL_HOURS).hours.do(_safe_read_emails)
     schedule.every().monday.at("07:00").do(agenda_generator.generate_agenda)
     t = threading.Thread(target=_run_scheduler, daemon=True)
     t.start()
     print("[Scheduler] Agendador iniciado em background.")
-    if not EMAIL_AUTOMATION_ENABLED:
-        print("[Scheduler] Leitura automática de e-mails desativada por configuração.")
-
-
-def _safe_read_emails():
-    if not EMAIL_AUTOMATION_ENABLED:
-        return
-    try:
-        import email_reader
-        result = email_reader.read_emails(verbose=False)
-        if result.get("status") != "ok":
-            return
-        if DRIVE_UPLOAD_ENABLED and result["attachments_saved"]:
-            import drive_uploader
-            drive_uploader.upload_attachments(result["attachments_saved"])
-    except Exception as e:
-        print(f"[Scheduler] Erro ao ler e-mails: {e}")
 
 
 # ─── Menus ────────────────────────────────────────────────────────────────────
 
 def _print_header():
     print("\n" + "=" * 55)
-    print("   ORGANIZADOR PESSOAL")
+    print("   TASK FLOW")
     print("=" * 55)
 
 
@@ -120,31 +96,6 @@ def _menu_organizer():
         confirm = input("  Confirma mover arquivos da pasta Downloads? (s/N): ").strip().lower()
         if confirm == "s":
             file_organizer.organize_downloads()
-
-
-def _menu_email():
-    print("\n── Ler E-mails (Gmail) ──────────────────")
-    try:
-        import email_reader
-        result = email_reader.read_emails()
-        if result["attachments_saved"]:
-            upload = input("  Enviar anexos ao Google Drive agora? (s/N): ").strip().lower()
-            if upload == "s":
-                import drive_uploader
-                drive_uploader.upload_attachments(result["attachments_saved"])
-    except ImportError as e:
-        print(f"  Erro ao importar módulo: {e}")
-    except Exception as e:
-        print(f"  Erro: {e}")
-
-
-def _menu_drive():
-    print("\n── Upload para Google Drive ─────────────")
-    try:
-        import drive_uploader
-        drive_uploader.upload_attachments()
-    except Exception as e:
-        print(f"  Erro: {e}")
 
 
 def _menu_agenda():
@@ -269,11 +220,9 @@ def main():
         print("  1. Tarefas")
         print("  2. Verificar contas a pagar")
         print("  3. Organizar pasta Downloads")
-        print("  4. Ler e-mails e criar tarefas")
-        print("  5. Upload de anexos para Google Drive")
-        print("  6. Gerar agenda semanal")
-        print("  7. Lembretes de hábitos")
-        print("  8. Lista de compras")
+        print("  4. Gerar agenda semanal")
+        print("  5. Lembretes de hábitos")
+        print("  6. Lista de compras")
         print("  0. Sair")
         opt = input("  > ").strip()
 
@@ -284,14 +233,10 @@ def main():
         elif opt == "3":
             _menu_organizer()
         elif opt == "4":
-            _menu_email()
-        elif opt == "5":
-            _menu_drive()
-        elif opt == "6":
             _menu_agenda()
-        elif opt == "7":
+        elif opt == "5":
             _menu_habits()
-        elif opt == "8":
+        elif opt == "6":
             _menu_shopping()
         elif opt == "0":
             print("\n  Encerrando. Até logo!")

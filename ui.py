@@ -25,7 +25,7 @@ TEXT_SEC  = "#a0aec0"
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Organizador Pessoal")
+        self.title("Task Flow")
         self.geometry("1000x660")
         self.minsize(900, 600)
         self.configure(fg_color=BG_DARK)
@@ -54,7 +54,7 @@ class App(ctk.CTk):
         self.sidebar.pack_propagate(False)
 
         ctk.CTkLabel(
-            self.sidebar, text="⚡ Organizador", font=ctk.CTkFont(size=16, weight="bold"),
+            self.sidebar, text="⚡ Task Flow", font=ctk.CTkFont(size=16, weight="bold"),
             text_color="white"
         ).pack(pady=(28, 24), padx=16)
 
@@ -63,7 +63,6 @@ class App(ctk.CTk):
             ("tarefas",    "✅  Tarefas"),
             ("contas",     "💳  Contas"),
             ("downloads",  "📁  Downloads"),
-            ("emails",     "📧  E-mails"),
             ("agenda",     "📅  Agenda"),
             ("habitos",    "⏰  Hábitos"),
             ("compras",    "🛒  Compras"),
@@ -91,7 +90,6 @@ class App(ctk.CTk):
             "tarefas":   TarefasFrame(self.main_area),
             "contas":    ContasFrame(self.main_area),
             "downloads": DownloadsFrame(self.main_area),
-            "emails":    EmailsFrame(self.main_area),
             "agenda":    AgendaFrame(self.main_area),
             "habitos":   HabitosFrame(self.main_area),
             "compras":   ComprasFrame(self.main_area),
@@ -432,96 +430,6 @@ class DownloadsFrame(ctk.CTkFrame):
             try:
                 sys.stdout = buf
                 file_organizer.organize_downloads(dry_run=False)
-            finally:
-                sys.stdout = old
-            output = buf.getvalue()
-            self.after(0, lambda: self._log_write(output))
-            self.after(0, lambda: self._status.configure(text="Concluído."))
-            self.after(0, lambda: self._set_busy(False))
-        threading.Thread(target=run, daemon=True).start()
-
-
-# ── Frame: E-mails ────────────────────────────────────────────────────────────
-class EmailsFrame(ctk.CTkFrame):
-    def __init__(self, master):
-        super().__init__(master, fg_color=BG_DARK, corner_radius=0)
-        self._built = False
-
-    def on_show(self):
-        if not self._built:
-            self._build()
-            self._built = True
-
-    def _build(self):
-        section_title(self, "📧  E-mails (Gmail)")
-        self._status = status_label(self)
-
-        info = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=10)
-        info.pack(fill="x", padx=24, pady=(0, 16))
-        ctk.CTkLabel(
-            info,
-            text="Coloque credentials.json em  credentials/  para ativar esta função.\n"
-                 "Palavras-chave monitoradas: urgente · prazo · confirmar · responder · pendente",
-            text_color=TEXT_SEC, font=ctk.CTkFont(size=12), justify="left"
-        ).pack(padx=16, pady=12)
-
-        btns = ctk.CTkFrame(self, fg_color="transparent")
-        btns.pack(anchor="w", padx=28, pady=(0, 16))
-        self._btn_read = action_btn(btns, "📬  Ler e-mails", self._read)
-        self._btn_read.pack(side="left", padx=(0, 10))
-        self._btn_upload = action_btn(btns, "☁  Upload Drive", self._upload, color="#0369a1")
-        self._btn_upload.pack(side="left")
-
-        self._log = ctk.CTkTextbox(self, state="disabled", fg_color=BG_CARD,
-                                    font=ctk.CTkFont(family="Consolas", size=12),
-                                    corner_radius=10)
-        self._log.pack(fill="both", expand=True, padx=24, pady=(0, 16))
-
-    def _log_write(self, text):
-        self._log.configure(state="normal")
-        self._log.insert("end", text + "\n")
-        self._log.see("end")
-        self._log.configure(state="disabled")
-
-    def _set_busy(self, is_busy: bool):
-        state = "disabled" if is_busy else "normal"
-        self._btn_read.configure(state=state)
-        self._btn_upload.configure(state=state)
-
-    def _read(self):
-        self._set_busy(True)
-        self._status.configure(text="Conectando ao Gmail...")
-        def run():
-            import io, sys
-            buf = io.StringIO()
-            old = sys.stdout
-            try:
-                sys.stdout = buf
-                import email_reader
-                email_reader.read_emails()
-            except Exception as e:
-                print(f"Erro: {e}")
-            finally:
-                sys.stdout = old
-            output = buf.getvalue()
-            self.after(0, lambda: self._log_write(output))
-            self.after(0, lambda: self._status.configure(text="Concluído."))
-            self.after(0, lambda: self._set_busy(False))
-        threading.Thread(target=run, daemon=True).start()
-
-    def _upload(self):
-        self._set_busy(True)
-        self._status.configure(text="Enviando ao Drive...")
-        def run():
-            import io, sys
-            buf = io.StringIO()
-            old = sys.stdout
-            try:
-                sys.stdout = buf
-                import drive_uploader
-                drive_uploader.upload_attachments()
-            except Exception as e:
-                print(f"Erro: {e}")
             finally:
                 sys.stdout = old
             output = buf.getvalue()

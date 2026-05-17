@@ -73,7 +73,7 @@ def check_bills() -> list:
                 notification.notify(
                     title=f"💳 Conta: {bill['nome']}",
                     message=msg,
-                    app_name="Organizador Pessoal",
+                    app_name="Task Flow",
                     timeout=10,
                 )
             except Exception as e:

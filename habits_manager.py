@@ -89,7 +89,7 @@ def check_habits_and_notify(verbose: bool = True) -> list:
             notification.notify(
                 title=f"⏰ Hábito: {h['title']}",
                 message=f"Hora de cumprir seu hábito (a cada {h['interval_minutes']} min).",
-                app_name="Organizador Pessoal",
+                app_name="Task Flow",
                 timeout=8,
             )
         except Exception as e:
@@ -119,7 +119,7 @@ def send_habit_reminder_now(habit_id: str) -> bool:
                 notification.notify(
                     title=f"⏰ Hábito: {h['title']}",
                     message="Lembrete manual enviado.",
-                    app_name="Organizador Pessoal",
+                    app_name="Task Flow",
                     timeout=8,
                 )
                 h["last_reminder_at"] = now
