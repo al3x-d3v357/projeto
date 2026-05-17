@@ -1,6 +1,6 @@
 import json
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from config import TASKS_FILE
 
 
@@ -17,7 +17,13 @@ def _save(tasks: list) -> None:
         json.dump(tasks, f, ensure_ascii=False, indent=2)
 
 
-def add_task(title: str, source: str = "manual", due_date: str = None) -> dict:
+def add_task(
+    title: str,
+    source: str = "manual",
+    due_date: str = None,
+    reminder_time: str = None,
+    remind_before_minutes: int = 5,
+) -> dict:
     """Adiciona uma nova tarefa. Retorna a tarefa criada."""
     tasks = _load()
     task = {
@@ -27,6 +33,9 @@ def add_task(title: str, source: str = "manual", due_date: str = None) -> dict:
         "status": "pendente",
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "due_date": due_date,
+        "reminder_time": reminder_time,
+        "remind_before_minutes": int(remind_before_minutes),
+        "last_reminder_for": None,
     }
     tasks.append(task)
     _save(tasks)
@@ -119,4 +128,53 @@ def print_tasks(status_filter: str = None) -> None:
     for t in tasks:
         status_icon = "✓" if t["status"] == "concluída" else "○"
         due = f"  [vence: {t['due_date']}]" if t.get("due_date") else ""
-        print(f"  [{status_icon}] ({t['id']}) {t['title']}{due}  — origem: {t['source']}")
+        reminder = ""
+        if t.get("due_date") and t.get("reminder_time"):
+            mins = int(t.get("remind_before_minutes", 5))
+            reminder = f"  [lembrete: {t['reminder_time']} (-{mins}min)]"
+        print(f"  [{status_icon}] ({t['id']}) {t['title']}{due}{reminder}  — origem: {t['source']}")
+
+
+def _parse_due_datetime(task: dict):
+    due_date = task.get("due_date")
+    reminder_time = task.get("reminder_time")
+    if not due_date or not reminder_time:
+        return None
+    try:
+        return datetime.strptime(f"{due_date} {reminder_time}", "%Y-%m-%d %H:%M")
+    except ValueError:
+        return None
+
+
+def check_task_reminders(now: datetime = None) -> list:
+    """Retorna tarefas que devem notificar agora e marca para evitar duplicidade."""
+    tasks = _load()
+    now = now or datetime.now()
+    changed = False
+    due_now = []
+
+    for task in tasks:
+        if task.get("status") != "pendente":
+            continue
+
+        due_dt = _parse_due_datetime(task)
+        if not due_dt:
+            continue
+
+        remind_before = int(task.get("remind_before_minutes", 5) or 5)
+        reminder_dt = due_dt - timedelta(minutes=remind_before)
+        reminder_key = due_dt.strftime("%Y-%m-%d %H:%M")
+
+        if task.get("last_reminder_for") == reminder_key:
+            continue
+
+        # Notifica da janela de lembrete até o horário da tarefa.
+        if reminder_dt <= now <= due_dt:
+            task["last_reminder_for"] = reminder_key
+            due_now.append(task)
+            changed = True
+
+    if changed:
+        _save(tasks)
+
+    return due_now

@@ -2,6 +2,7 @@ import customtkinter as ctk
 from datetime import date
 import threading
 from datetime import datetime
+from plyer import notification
 
 import task_manager
 import bill_reminder
@@ -33,6 +34,7 @@ class App(ctk.CTk):
         self._build_sidebar()
         self._build_frames()
         self._start_habits_loop()
+        self._start_task_reminders_loop()
         self._show_frame("tarefas")
 
     def _start_habits_loop(self):
@@ -45,6 +47,28 @@ class App(ctk.CTk):
                 # Verifica hábitos uma vez por minuto
                 import time
                 time.sleep(60)
+        threading.Thread(target=run, daemon=True).start()
+
+    def _start_task_reminders_loop(self):
+        def run():
+            import time
+            while True:
+                try:
+                    due_tasks = task_manager.check_task_reminders()
+                    for task in due_tasks:
+                        notification.notify(
+                            title=f"⏰ Tarefa em breve: {task['title']}",
+                            message=(
+                                f"Faltam {task.get('remind_before_minutes', 5)} min. "
+                                f"Horário: {task.get('reminder_time', '--:--')}"
+                            ),
+                            app_name="Task Flow",
+                            timeout=10,
+                        )
+                except Exception:
+                    pass
+                time.sleep(30)
+
         threading.Thread(target=run, daemon=True).start()
 
     # ── Sidebar ──────────────────────────────────────────────────────────────
@@ -126,6 +150,19 @@ def card_frame(parent):
     return ctk.CTkFrame(parent, fg_color=BG_CARD, corner_radius=12)
 
 
+def send_section_reminder(section_name: str) -> bool:
+    try:
+        notification.notify(
+            title=f"🔔 Lembrete: {section_name}",
+            message=f"Você tem atividades pendentes em {section_name}.",
+            app_name="Task Flow",
+            timeout=8,
+        )
+        return True
+    except Exception:
+        return False
+
+
 # ── Frame: Tarefas ────────────────────────────────────────────────────────────
 class TarefasFrame(ctk.CTkFrame):
     def __init__(self, master):
@@ -172,6 +209,16 @@ class TarefasFrame(ctk.CTkFrame):
             command=self._refresh_list,
         ).pack(side="left")
 
+        ctk.CTkButton(
+            controls,
+            text="🔔 Lembrete",
+            width=110,
+            height=30,
+            fg_color="#7c3aed",
+            hover_color="#6d28d9",
+            command=self._send_reminder,
+        ).pack(side="left", padx=(10, 0))
+
         # Entrada de nova tarefa
         card = card_frame(self)
         card.pack(fill="x", padx=24, pady=(0, 16))
@@ -186,6 +233,10 @@ class TarefasFrame(ctk.CTkFrame):
         self._due = ctk.CTkEntry(row, placeholder_text="Vencimento (YYYY-MM-DD)",
                                   width=180, height=36, font=ctk.CTkFont(size=13))
         self._due.pack(side="left", padx=(0, 8))
+
+        self._time = ctk.CTkEntry(row, placeholder_text="Hora (HH:MM)",
+                      width=120, height=36, font=ctk.CTkFont(size=13))
+        self._time.pack(side="left", padx=(0, 8))
 
         self._add_btn = action_btn(row, "+ Adicionar", self._add_task)
         self._add_btn.pack(side="left")
@@ -246,6 +297,9 @@ class TarefasFrame(ctk.CTkFrame):
         title = task["title"]
         if task.get("due_date"):
             title += f"   [vence: {task['due_date']}]"
+        if task.get("due_date") and task.get("reminder_time"):
+            mins = int(task.get("remind_before_minutes", 5))
+            title += f"   [lembrete: {task['reminder_time']} (-{mins}min)]"
         ctk.CTkLabel(row, text=title, text_color="white" if not done else TEXT_SEC,
                      font=ctk.CTkFont(size=13), anchor="w").pack(side="left", padx=10, fill="x", expand=True)
 
@@ -268,6 +322,7 @@ class TarefasFrame(ctk.CTkFrame):
     def _add_task(self):
         title = self._entry.get().strip()
         due   = self._due.get().strip() or None
+        reminder_time = self._time.get().strip() or None
         if not title:
             self._status.configure(text="Digite um título para a tarefa.")
             return
@@ -277,11 +332,32 @@ class TarefasFrame(ctk.CTkFrame):
             except ValueError:
                 self._status.configure(text="Data inválida. Use YYYY-MM-DD.")
                 return
-        task_manager.add_task(title=title, due_date=due)
+
+        if reminder_time and not due:
+            self._status.configure(text="Para usar lembrete por hora, preencha também a data.")
+            return
+
+        if reminder_time:
+            try:
+                datetime.strptime(reminder_time, "%H:%M")
+            except ValueError:
+                self._status.configure(text="Hora inválida. Use HH:MM (ex: 20:10).")
+                return
+
+        task_manager.add_task(
+            title=title,
+            due_date=due,
+            reminder_time=reminder_time,
+            remind_before_minutes=5,
+        )
         self._entry.delete(0, "end")
         self._due.delete(0, "end")
+        self._time.delete(0, "end")
         self._refresh_list()
-        self._status.configure(text="Tarefa adicionada com sucesso.")
+        if reminder_time:
+            self._status.configure(text="Tarefa adicionada. Lembrete configurado para 5 minutos antes.")
+        else:
+            self._status.configure(text="Tarefa adicionada com sucesso.")
 
     def _complete(self, tid):
         task_manager.complete_task(tid)
@@ -290,6 +366,12 @@ class TarefasFrame(ctk.CTkFrame):
     def _delete(self, tid):
         task_manager.delete_task(tid)
         self._refresh_list()
+
+    def _send_reminder(self):
+        if send_section_reminder("Tarefas"):
+            self._status.configure(text="Lembrete de tarefas enviado.")
+        else:
+            self._status.configure(text="Não foi possível enviar o lembrete.")
 
 
 # ── Frame: Contas ─────────────────────────────────────────────────────────────
@@ -306,8 +388,12 @@ class ContasFrame(ctk.CTkFrame):
         section_title(self, "💳  Contas a Pagar")
         self._status = status_label(self)
 
-        action_btn(self, "🔔  Verificar e notificar", self._check,
-                   color="#7c3aed").pack(anchor="w", padx=28, pady=(0, 16))
+        btns = ctk.CTkFrame(self, fg_color="transparent")
+        btns.pack(anchor="w", padx=28, pady=(0, 16))
+        action_btn(btns, "🔔  Verificar e notificar", self._check,
+                   color="#7c3aed").pack(side="left", padx=(0, 10))
+        action_btn(btns, "Lembrete da seção", self._send_reminder,
+                   color=ACCENT).pack(side="left")
 
         import csv
         from config import BILLS_FILE
@@ -360,6 +446,12 @@ class ContasFrame(ctk.CTkFrame):
             self.after(0, lambda: self._status.configure(text=msg))
         threading.Thread(target=run, daemon=True).start()
 
+    def _send_reminder(self):
+        if send_section_reminder("Contas"):
+            self._status.configure(text="Lembrete de contas enviado.")
+        else:
+            self._status.configure(text="Não foi possível enviar o lembrete.")
+
 
 # ── Frame: Downloads ──────────────────────────────────────────────────────────
 class DownloadsFrame(ctk.CTkFrame):
@@ -382,6 +474,8 @@ class DownloadsFrame(ctk.CTkFrame):
         self._btn_preview.pack(side="left", padx=(0, 10))
         self._btn_organize = action_btn(btns, "🚀  Organizar agora", self._organize)
         self._btn_organize.pack(side="left")
+        self._btn_reminder = action_btn(btns, "🔔 Lembrete", self._send_reminder, color="#7c3aed")
+        self._btn_reminder.pack(side="left", padx=(10, 0))
 
         self._log = ctk.CTkTextbox(self, state="disabled", fg_color=BG_CARD,
                                     font=ctk.CTkFont(family="Consolas", size=12),
@@ -398,6 +492,7 @@ class DownloadsFrame(ctk.CTkFrame):
         state = "disabled" if is_busy else "normal"
         self._btn_preview.configure(state=state)
         self._btn_organize.configure(state=state)
+        self._btn_reminder.configure(state=state)
 
     def _preview(self):
         self._set_busy(True)
@@ -438,6 +533,12 @@ class DownloadsFrame(ctk.CTkFrame):
             self.after(0, lambda: self._set_busy(False))
         threading.Thread(target=run, daemon=True).start()
 
+    def _send_reminder(self):
+        if send_section_reminder("Downloads"):
+            self._status.configure(text="Lembrete de downloads enviado.")
+        else:
+            self._status.configure(text="Não foi possível enviar o lembrete.")
+
 
 # ── Frame: Agenda ─────────────────────────────────────────────────────────────
 class AgendaFrame(ctk.CTkFrame):
@@ -463,6 +564,7 @@ class AgendaFrame(ctk.CTkFrame):
                                          width=200, height=36, font=ctk.CTkFont(size=13))
         self._date_entry.pack(side="left", padx=(0, 8))
         action_btn(row, "Gerar", self._generate_custom, color=ACCENT).pack(side="left")
+        action_btn(row, "🔔 Lembrete", self._send_reminder, color="#7c3aed").pack(side="left", padx=(10, 0))
 
         self._textbox = ctk.CTkTextbox(self, state="disabled", fg_color=BG_CARD,
                                         font=ctk.CTkFont(family="Consolas", size=12),
@@ -499,6 +601,12 @@ class AgendaFrame(ctk.CTkFrame):
             self.after(0, lambda: self._show_file(path))
         threading.Thread(target=run, daemon=True).start()
 
+    def _send_reminder(self):
+        if send_section_reminder("Agenda"):
+            self._status.configure(text="Lembrete de agenda enviado.")
+        else:
+            self._status.configure(text="Não foi possível enviar o lembrete.")
+
 
 # ── Frame: Hábitos ───────────────────────────────────────────────────────────
 class HabitosFrame(ctk.CTkFrame):
@@ -530,6 +638,7 @@ class HabitosFrame(ctk.CTkFrame):
         self._interval.pack(side="left", padx=(0, 8))
 
         action_btn(row, "+ Adicionar", self._add).pack(side="left")
+        action_btn(row, "🔔 Lembrete", self._send_general_reminder, color="#7c3aed").pack(side="left", padx=(8, 0))
 
         self._list = ctk.CTkScrollableFrame(self, fg_color=BG_DARK, corner_radius=0)
         self._list.pack(fill="both", expand=True, padx=24)
@@ -616,6 +725,12 @@ class HabitosFrame(ctk.CTkFrame):
             self._status.configure(text="Não foi possível enviar o lembrete.")
         self._refresh()
 
+    def _send_general_reminder(self):
+        if send_section_reminder("Hábitos"):
+            self._status.configure(text="Lembrete de hábitos enviado.")
+        else:
+            self._status.configure(text="Não foi possível enviar o lembrete.")
+
 
 # ── Frame: Compras ───────────────────────────────────────────────────────────
 class ComprasFrame(ctk.CTkFrame):
@@ -646,6 +761,11 @@ class ComprasFrame(ctk.CTkFrame):
         self._qty.insert(0, "1")
         self._qty.pack(side="left", padx=(0, 8))
 
+        self._price = ctk.CTkEntry(row, placeholder_text="Valor (R$)", width=120,
+                       height=36, font=ctk.CTkFont(size=13))
+        self._price.insert(0, "0,00")
+        self._price.pack(side="left", padx=(0, 8))
+
         action_btn(row, "+ Adicionar", self._add).pack(side="left", padx=(0, 8))
         ctk.CTkButton(
             row, text="Limpar comprados", width=130, height=36,
@@ -655,14 +775,39 @@ class ComprasFrame(ctk.CTkFrame):
         self._list = ctk.CTkScrollableFrame(self, fg_color=BG_DARK, corner_radius=0)
         self._list.pack(fill="both", expand=True, padx=24)
 
+        self._total_label = ctk.CTkLabel(
+            self,
+            text="Total estimado: R$ 0,00",
+            text_color="#4ade80",
+            font=ctk.CTkFont(size=13, weight="bold"),
+        )
+        self._total_label.pack(anchor="e", padx=28, pady=(8, 16))
+
         self._refresh()
+
+    def _to_float(self, raw_value: str, default: float) -> float:
+        txt = (str(raw_value or "").strip()
+               .replace("R$", "")
+               .replace(" ", "")
+               .replace(".", "")
+               .replace(",", "."))
+        try:
+            value = float(txt)
+            return value if value >= 0 else default
+        except ValueError:
+            return default
+
+    def _format_brl(self, value: float) -> str:
+        return f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
     def _refresh(self):
         for w in self._list.winfo_children():
             w.destroy()
 
         items = shopping_list_manager.list_items()
+        total = 0.0
         if not items:
+            self._total_label.configure(text="Total estimado: R$ 0,00")
             ctk.CTkLabel(self._list, text="Sua lista está vazia.", text_color=TEXT_SEC).pack(pady=20)
             return
 
@@ -674,13 +819,17 @@ class ComprasFrame(ctk.CTkFrame):
             row.pack(fill="x", pady=4)
             row.pack_propagate(False)
 
+            qty_value = self._to_float(item.get("quantity", "1"), 1.0)
+            price_value = self._to_float(item.get("price", "0,00"), 0.0)
+            total += qty_value * price_value
+
             checked = item.get("checked", False)
             icon = "✓" if checked else "○"
             color = "#4ade80" if checked else "white"
 
             ctk.CTkLabel(row, text=icon, text_color=color,
                          font=ctk.CTkFont(size=16, weight="bold"), width=30).pack(side="left", padx=(12, 0))
-            ctk.CTkLabel(row, text=f"{item['name']}  (x{item.get('quantity', '1')})",
+            ctk.CTkLabel(row, text=f"{item['name']}  (x{item.get('quantity', '1')})  -  R$ {item.get('price', '0,00')}",
                          text_color=color if checked else "white",
                          font=ctk.CTkFont(size=13)).pack(side="left", padx=10, fill="x", expand=True)
 
@@ -696,16 +845,21 @@ class ComprasFrame(ctk.CTkFrame):
                 command=lambda iid=item["id"]: self._delete(iid),
             ).pack(side="left", padx=(0, 10))
 
+        self._total_label.configure(text=f"Total estimado: R$ {self._format_brl(total)}")
+
     def _add(self):
         name = self._name.get().strip()
         qty = self._qty.get().strip() or "1"
+        price = self._price.get().strip() or "0,00"
         if not name:
             self._status.configure(text="Digite o nome do item.")
             return
-        shopping_list_manager.add_item(name=name, quantity=qty)
+        shopping_list_manager.add_item(name=name, quantity=qty, price=price)
         self._name.delete(0, "end")
         self._qty.delete(0, "end")
         self._qty.insert(0, "1")
+        self._price.delete(0, "end")
+        self._price.insert(0, "0,00")
         self._status.configure(text="Item adicionado.")
         self._refresh()
 

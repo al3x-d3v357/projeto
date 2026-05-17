@@ -18,12 +18,13 @@ def _save(items: list) -> None:
         json.dump(items, f, ensure_ascii=False, indent=2)
 
 
-def add_item(name: str, quantity: str = "1") -> dict:
+def add_item(name: str, quantity: str = "1", price: str = "0,00") -> dict:
     items = _load()
     item = {
         "id": str(uuid.uuid4())[:8],
         "name": name,
         "quantity": quantity,
+        "price": price,
         "checked": False,
         "created_at": datetime.now().isoformat(timespec="seconds"),
     }
