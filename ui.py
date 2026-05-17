@@ -1,7 +1,6 @@
 import customtkinter as ctk
-from datetime import date
+from datetime import date, datetime, timedelta
 import threading
-from datetime import datetime
 from tkinter import filedialog
 from plyer import notification
 
@@ -228,13 +227,31 @@ class TarefasFrame(ctk.CTkFrame):
                                    height=36, font=ctk.CTkFont(size=13))
         self._entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
 
-        self._due = ctk.CTkEntry(row, placeholder_text="Vencimento (YYYY-MM-DD)",
-                                  width=180, height=36, font=ctk.CTkFont(size=13))
-        self._due.pack(side="left", padx=(0, 8))
+        self._due_options = self._build_due_options()
+        self._due_var = ctk.StringVar(value=self._due_options[0])
+        self._due_menu = ctk.CTkOptionMenu(
+            row,
+            values=self._due_options,
+            variable=self._due_var,
+            command=self._on_due_change,
+            width=190,
+        )
+        self._due_menu.pack(side="left", padx=(0, 8))
 
-        self._time = ctk.CTkEntry(row, placeholder_text="Hora (HH:MM)",
-                      width=120, height=36, font=ctk.CTkFont(size=13))
-        self._time.pack(side="left", padx=(0, 8))
+        self._time_options = ["Sem horario"] + [
+            f"{hour:02d}:{minute:02d}"
+            for hour in range(24)
+            for minute in range(0, 60, 5)
+        ]
+        self._time_var = ctk.StringVar(value="Sem horario")
+        self._time_menu = ctk.CTkOptionMenu(
+            row,
+            values=self._time_options,
+            variable=self._time_var,
+            width=120,
+            state="disabled",
+        )
+        self._time_menu.pack(side="left", padx=(0, 8))
 
         self._add_btn = action_btn(row, "+ Adicionar", self._add_task)
         self._add_btn.pack(side="left")
@@ -244,6 +261,28 @@ class TarefasFrame(ctk.CTkFrame):
         self._list_frame.pack(fill="both", expand=True, padx=24)
 
         self._refresh_list()
+
+    def _build_due_options(self) -> list:
+        self._due_label_to_iso = {"Sem data": None}
+        options = ["Sem data"]
+        for offset in range(0, 15):
+            d = date.today() + timedelta(days=offset)
+            if offset == 0:
+                label = f"Hoje ({d.strftime('%d/%m/%Y')})"
+            elif offset == 1:
+                label = f"Amanha ({d.strftime('%d/%m/%Y')})"
+            else:
+                label = f"+{offset} dias ({d.strftime('%d/%m/%Y')})"
+            options.append(label)
+            self._due_label_to_iso[label] = d.isoformat()
+        return options
+
+    def _on_due_change(self, selected: str):
+        if self._due_label_to_iso.get(selected) is None:
+            self._time_var.set("Sem horario")
+            self._time_menu.configure(state="disabled")
+        else:
+            self._time_menu.configure(state="normal")
 
     def _refresh_list(self):
         for w in self._list_frame.winfo_children():
@@ -319,28 +358,18 @@ class TarefasFrame(ctk.CTkFrame):
 
     def _add_task(self):
         title = self._entry.get().strip()
-        due   = self._due.get().strip() or None
-        reminder_time = self._time.get().strip() or None
+        due = self._due_label_to_iso.get(self._due_var.get())
+        reminder_time = self._time_var.get()
+        if reminder_time == "Sem horario":
+            reminder_time = None
+
         if not title:
             self._status.configure(text="Digite um título para a tarefa.")
             return
-        if due:
-            try:
-                datetime.strptime(due, "%Y-%m-%d")
-            except ValueError:
-                self._status.configure(text="Data inválida. Use YYYY-MM-DD.")
-                return
 
         if reminder_time and not due:
             self._status.configure(text="Para usar lembrete por hora, preencha também a data.")
             return
-
-        if reminder_time:
-            try:
-                datetime.strptime(reminder_time, "%H:%M")
-            except ValueError:
-                self._status.configure(text="Hora inválida. Use HH:MM (ex: 20:10).")
-                return
 
         task_manager.add_task(
             title=title,
@@ -349,8 +378,9 @@ class TarefasFrame(ctk.CTkFrame):
             remind_before_minutes=5,
         )
         self._entry.delete(0, "end")
-        self._due.delete(0, "end")
-        self._time.delete(0, "end")
+        self._due_var.set(self._due_options[0])
+        self._time_var.set("Sem horario")
+        self._time_menu.configure(state="disabled")
         self._refresh_list()
         if reminder_time:
             self._status.configure(text="Tarefa adicionada. Lembrete configurado para 5 minutos antes.")
