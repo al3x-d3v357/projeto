@@ -5,7 +5,6 @@ from datetime import datetime
 from plyer import notification
 
 import task_manager
-import bill_reminder
 import file_organizer
 import agenda_generator
 import habits_manager
@@ -85,7 +84,6 @@ class App(ctk.CTk):
         self._nav_buttons = {}
         nav_items = [
             ("tarefas",    "✅  Tarefas"),
-            ("contas",     "💳  Contas"),
             ("downloads",  "📁  Downloads"),
             ("agenda",     "📅  Agenda"),
             ("habitos",    "⏰  Hábitos"),
@@ -112,7 +110,6 @@ class App(ctk.CTk):
 
         self.frames = {
             "tarefas":   TarefasFrame(self.main_area),
-            "contas":    ContasFrame(self.main_area),
             "downloads": DownloadsFrame(self.main_area),
             "agenda":    AgendaFrame(self.main_area),
             "habitos":   HabitosFrame(self.main_area),
@@ -370,85 +367,6 @@ class TarefasFrame(ctk.CTkFrame):
     def _send_reminder(self):
         if send_section_reminder("Tarefas"):
             self._status.configure(text="Lembrete de tarefas enviado.")
-        else:
-            self._status.configure(text="Não foi possível enviar o lembrete.")
-
-
-# ── Frame: Contas ─────────────────────────────────────────────────────────────
-class ContasFrame(ctk.CTkFrame):
-    def __init__(self, master):
-        super().__init__(master, fg_color=BG_DARK, corner_radius=0)
-
-    def on_show(self):
-        for w in self.winfo_children():
-            w.destroy()
-        self._build()
-
-    def _build(self):
-        section_title(self, "💳  Contas a Pagar")
-        self._status = status_label(self)
-
-        btns = ctk.CTkFrame(self, fg_color="transparent")
-        btns.pack(anchor="w", padx=28, pady=(0, 16))
-        action_btn(btns, "🔔  Verificar e notificar", self._check,
-                   color="#7c3aed").pack(side="left", padx=(0, 10))
-        action_btn(btns, "Lembrete da seção", self._send_reminder,
-                   color=ACCENT).pack(side="left")
-
-        import csv
-        from config import BILLS_FILE
-        today = date.today()
-
-        scroll = ctk.CTkScrollableFrame(self, fg_color=BG_DARK, corner_radius=0)
-        scroll.pack(fill="both", expand=True, padx=24)
-
-        try:
-            with open(BILLS_FILE, newline="", encoding="utf-8") as f:
-                bills = list(csv.DictReader(f))
-        except FileNotFoundError:
-            ctk.CTkLabel(scroll, text="bills.csv não encontrado.", text_color=TEXT_SEC).pack()
-            return
-
-        from datetime import datetime
-        for bill in bills:
-            try:
-                due = datetime.strptime(bill["vencimento"].strip(), "%Y-%m-%d").date()
-            except ValueError:
-                continue
-
-            days_left = (due - today).days
-            if days_left < 0:
-                color, tag = "#ef4444", "VENCIDA"
-            elif days_left <= 3:
-                color, tag = "#f59e0b", f"{days_left}d restante(s)"
-            else:
-                color, tag = "#4ade80", f"{days_left}d restante(s)"
-
-            row = ctk.CTkFrame(scroll, fg_color=BG_CARD, corner_radius=8, height=52)
-            row.pack(fill="x", pady=4)
-            row.pack_propagate(False)
-
-            ctk.CTkFrame(row, fg_color=color, width=4, corner_radius=2).pack(side="left", fill="y", padx=(0, 12))
-            ctk.CTkLabel(row, text=bill["nome"], font=ctk.CTkFont(size=13, weight="bold"),
-                         text_color="white").pack(side="left")
-            ctk.CTkLabel(row, text=f"R$ {bill['valor']}", text_color=TEXT_SEC,
-                         font=ctk.CTkFont(size=13)).pack(side="left", padx=16)
-            ctk.CTkLabel(row, text=due.strftime("%d/%m/%Y"), text_color=TEXT_SEC,
-                         font=ctk.CTkFont(size=12)).pack(side="left")
-            ctk.CTkLabel(row, text=tag, text_color=color,
-                         font=ctk.CTkFont(size=12, weight="bold")).pack(side="right", padx=16)
-
-    def _check(self):
-        self._status.configure(text="Verificando...")
-        def run():
-            notified = bill_reminder.check_bills()
-            msg = f"{len(notified)} notificação(ões) enviada(s)." if notified else "Nenhuma conta vencendo em breve."
-            self.after(0, lambda: self._status.configure(text=msg))
-        threading.Thread(target=run, daemon=True).start()
-
-    def _send_reminder(self):
-        if send_section_reminder("Contas"):
-            self._status.configure(text="Lembrete de contas enviado.")
         else:
             self._status.configure(text="Não foi possível enviar o lembrete.")
 

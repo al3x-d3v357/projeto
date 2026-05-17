@@ -1,7 +1,6 @@
 import schedule
 import time
 import threading
-import bill_reminder
 import agenda_generator
 import habits_manager
 from ui import App
@@ -17,7 +16,6 @@ def _run_scheduler():
 
 def _setup_scheduler():
     """Define jobs automáticos periódicos."""
-    schedule.every().day.at("08:00").do(bill_reminder.check_bills)
     schedule.every(30).minutes.do(lambda: habits_manager.check_habits_and_notify(verbose=False))
     schedule.every().monday.at("07:00").do(agenda_generator.generate_agenda)
     t = threading.Thread(target=_run_scheduler, daemon=True)
