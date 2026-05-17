@@ -1,18 +1,1 @@
-[
-  {
-    "id": "391ce505",
-    "name": "arroz",
-    "quantity": "1",
-    "price": "10,00",
-    "checked": false,
-    "created_at": "2026-05-17T20:13:16"
-  },
-  {
-    "id": "0025edd1",
-    "name": "feijão",
-    "quantity": "1",
-    "price": "10,00",
-    "checked": false,
-    "created_at": "2026-05-17T20:13:44"
-  }
-]
+[]
