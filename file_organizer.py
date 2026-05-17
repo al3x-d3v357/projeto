@@ -12,21 +12,23 @@ def _get_category(extension: str) -> str:
     return "Outros"
 
 
-def organize_downloads(dry_run: bool = False) -> list:
+def organize_downloads(dry_run: bool = False, target_dir: str = None) -> list:
     """
-    Move arquivos da pasta Downloads para subpastas categorizadas.
+    Move arquivos da pasta escolhida para subpastas categorizadas.
     Se dry_run=True, apenas lista o que seria feito sem mover nada.
     Retorna lista de dicts com as operações realizadas.
     """
-    if not os.path.isdir(DOWNLOADS_DIR):
-        print(f"[Organizer] Pasta não encontrada: {DOWNLOADS_DIR}")
+    base_dir = target_dir or DOWNLOADS_DIR
+
+    if not os.path.isdir(base_dir):
+        print(f"[Organizer] Pasta não encontrada: {base_dir}")
         return []
 
     operations = []
     skipped = 0
 
-    for filename in os.listdir(DOWNLOADS_DIR):
-        src = os.path.join(DOWNLOADS_DIR, filename)
+    for filename in os.listdir(base_dir):
+        src = os.path.join(base_dir, filename)
 
         # Ignora subpastas
         if os.path.isdir(src):
@@ -39,7 +41,7 @@ def organize_downloads(dry_run: bool = False) -> list:
             continue
 
         category = _get_category(ext)
-        dest_dir = os.path.join(DOWNLOADS_DIR, category)
+        dest_dir = os.path.join(base_dir, category)
         dest = os.path.join(dest_dir, filename)
 
         # Evita sobrescrever arquivo existente

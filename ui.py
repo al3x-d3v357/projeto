@@ -2,6 +2,7 @@ import customtkinter as ctk
 from datetime import date
 import threading
 from datetime import datetime
+from tkinter import filedialog
 from plyer import notification
 
 import task_manager
@@ -376,6 +377,8 @@ class DownloadsFrame(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master, fg_color=BG_DARK, corner_radius=0)
         self._built = False
+        from config import DOWNLOADS_DIR
+        self._target_dir = DOWNLOADS_DIR
 
     def on_show(self):
         if not self._built:
@@ -385,6 +388,23 @@ class DownloadsFrame(ctk.CTkFrame):
     def _build(self):
         section_title(self, "📁  Organizar Downloads")
         self._status = status_label(self)
+
+        folder_row = ctk.CTkFrame(self, fg_color="transparent")
+        folder_row.pack(fill="x", padx=28, pady=(0, 10))
+        ctk.CTkLabel(folder_row, text="Pasta selecionada:", text_color=TEXT_SEC).pack(side="left", padx=(0, 8))
+        self._folder_var = ctk.StringVar(value=self._target_dir)
+        self._folder_entry = ctk.CTkEntry(folder_row, textvariable=self._folder_var, state="readonly")
+        self._folder_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        self._btn_pick_folder = ctk.CTkButton(
+            folder_row,
+            text="Escolher pasta",
+            width=130,
+            height=32,
+            fg_color="#374151",
+            hover_color="#4b5563",
+            command=self._pick_folder,
+        )
+        self._btn_pick_folder.pack(side="left")
 
         btns = ctk.CTkFrame(self, fg_color="transparent")
         btns.pack(anchor="w", padx=28, pady=(0, 16))
@@ -411,6 +431,15 @@ class DownloadsFrame(ctk.CTkFrame):
         self._btn_preview.configure(state=state)
         self._btn_organize.configure(state=state)
         self._btn_reminder.configure(state=state)
+        self._btn_pick_folder.configure(state=state)
+
+    def _pick_folder(self):
+        selected = filedialog.askdirectory(initialdir=self._target_dir)
+        if not selected:
+            return
+        self._target_dir = selected
+        self._folder_var.set(selected)
+        self._status.configure(text="Pasta atualizada para organização.")
 
     def _preview(self):
         self._set_busy(True)
@@ -424,7 +453,7 @@ class DownloadsFrame(ctk.CTkFrame):
             old = sys.stdout
             try:
                 sys.stdout = buf
-                file_organizer.organize_downloads(dry_run=True)
+                file_organizer.organize_downloads(dry_run=True, target_dir=self._target_dir)
             finally:
                 sys.stdout = old
             output = buf.getvalue()
@@ -442,7 +471,7 @@ class DownloadsFrame(ctk.CTkFrame):
             old = sys.stdout
             try:
                 sys.stdout = buf
-                file_organizer.organize_downloads(dry_run=False)
+                file_organizer.organize_downloads(dry_run=False, target_dir=self._target_dir)
             finally:
                 sys.stdout = old
             output = buf.getvalue()
