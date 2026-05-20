@@ -27,6 +27,9 @@ BILLS_FILE = os.path.join(BASE_DIR, "bills.csv")
 # Histórico de lembretes enviados para evitar duplicidade no mesmo dia
 REMINDER_HISTORY_FILE = os.path.join(BASE_DIR, "reminder_history.json")
 
+# Configurações de acessibilidade
+ACCESSIBILITY_FILE = os.path.join(BASE_DIR, "accessibility.json")
+
 # Pasta de saída das agendas semanais
 AGENDA_DIR = os.path.join(BASE_DIR, "agendas")
 

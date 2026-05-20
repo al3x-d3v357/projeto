@@ -9,6 +9,7 @@ import file_organizer
 import agenda_generator
 import habits_manager
 import shopping_list_manager
+import accessibility
 
 # ── Tema global ──────────────────────────────────────────────────────────────
 ctk.set_appearance_mode("dark")
@@ -30,11 +31,15 @@ class App(ctk.CTk):
         self.minsize(900, 600)
         self.configure(fg_color=BG_DARK)
 
+        # Aplica configurações de acessibilidade antes de construir a UI
+        accessibility.get_manager().apply_all()
+
         self._build_sidebar()
         self._build_frames()
         self._start_habits_loop()
         self._start_task_reminders_loop()
         self._show_frame("tarefas")
+        self._accessibility_win = None
 
     def _start_habits_loop(self):
         def run():
@@ -99,6 +104,14 @@ class App(ctk.CTk):
             btn.pack(fill="x", padx=10, pady=2)
             self._nav_buttons[key] = btn
 
+        # Botão de acessibilidade fixado no rodapé da sidebar
+        ctk.CTkButton(
+            self.sidebar, text="♿  Acessibilidade", anchor="w",
+            fg_color="transparent", hover_color="#2d3748",
+            font=ctk.CTkFont(size=12), height=36,
+            command=self._open_accessibility,
+        ).pack(side="bottom", fill="x", padx=10, pady=(0, 12))
+
     def _highlight_nav(self, active_key: str):
         for key, btn in self._nav_buttons.items():
             btn.configure(fg_color=ACCENT if key == active_key else "transparent")
@@ -118,11 +131,25 @@ class App(ctk.CTk):
         for frame in self.frames.values():
             frame.place(relx=0, rely=0, relwidth=1, relheight=1)
 
+    def _open_accessibility(self):
+        if self._accessibility_win and self._accessibility_win.winfo_exists():
+            self._accessibility_win.focus()
+            return
+        self._accessibility_win = AccessibilityWindow(self)
+
     def _show_frame(self, key: str):
         self.frames[key].tkraise()
         self._highlight_nav(key)
         if hasattr(self.frames[key], "on_show"):
             self.frames[key].on_show()
+        _section_names = {
+            "tarefas": "Tarefas",
+            "downloads": "Organizar Downloads",
+            "agenda": "Agenda Semanal",
+            "habitos": "Lembretes de Hábitos",
+            "compras": "Lista de Compras",
+        }
+        accessibility.get_manager().speak(_section_names.get(key, key))
 
 
 # ── Componentes reutilizáveis ─────────────────────────────────────────────────
@@ -854,6 +881,190 @@ class ComprasFrame(ctk.CTkFrame):
         removed = shopping_list_manager.clear_checked()
         self._status.configure(text=f"{removed} item(ns) comprado(s) removido(s).")
         self._refresh()
+
+
+# ── Janela: Acessibilidade ───────────────────────────────────────────────────
+class AccessibilityWindow(ctk.CTkToplevel):
+    """Janela flutuante de configurações de acessibilidade."""
+
+    _FONT_SCALES = [0.8, 1.0, 1.25, 1.5, 2.0]
+
+    def __init__(self, master):
+        super().__init__(master)
+        self.title("♿ Acessibilidade")
+        self.geometry("440x460")
+        self.resizable(False, False)
+        self.grab_set()
+        self._mgr = accessibility.get_manager()
+        # Cópia de trabalho dos settings para edição
+        self._work = dict(self._mgr.settings)
+        self._build()
+
+    def _build(self):
+        pad = {"padx": 28, "pady": (14, 0)}
+
+        ctk.CTkLabel(
+            self, text="Configurações de Acessibilidade",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).pack(**pad)
+
+        # ── Alto contraste ────────────────────────────────────────────────────
+        sep1 = ctk.CTkFrame(self, height=1, fg_color="gray30")
+        sep1.pack(fill="x", padx=20, pady=(16, 0))
+
+        row_hc = ctk.CTkFrame(self, fg_color="transparent")
+        row_hc.pack(fill="x", **pad)
+        ctk.CTkLabel(
+            row_hc, text="Alto Contraste",
+            font=ctk.CTkFont(size=13, weight="bold"),
+        ).pack(side="left")
+        ctk.CTkLabel(
+            row_hc,
+            text="Tema claro com alto contraste para baixa visão",
+            text_color=TEXT_SEC, font=ctk.CTkFont(size=11),
+        ).pack(side="left", padx=(10, 0))
+        self._hc_var = ctk.BooleanVar(value=self._work["high_contrast"])
+        ctk.CTkSwitch(
+            self, text="", variable=self._hc_var,
+            onvalue=True, offvalue=False,
+        ).pack(anchor="w", padx=28, pady=(6, 0))
+
+        # ── Escala de fonte ───────────────────────────────────────────────────
+        sep2 = ctk.CTkFrame(self, height=1, fg_color="gray30")
+        sep2.pack(fill="x", padx=20, pady=(14, 0))
+
+        ctk.CTkLabel(
+            self, text="Tamanho da Fonte",
+            font=ctk.CTkFont(size=13, weight="bold"),
+        ).pack(anchor="w", **pad)
+
+        scale_row = ctk.CTkFrame(self, fg_color="transparent")
+        scale_row.pack(fill="x", padx=28, pady=(6, 0))
+
+        current_idx = 1  # padrão 1.0×
+        cur = self._work["font_scale"]
+        for i, v in enumerate(self._FONT_SCALES):
+            if abs(v - cur) < 0.01:
+                current_idx = i
+                break
+
+        self._scale_label = ctk.CTkLabel(
+            scale_row,
+            text=f"{self._work['font_scale']:.2f}×",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            width=50,
+        )
+        self._scale_label.pack(side="right")
+
+        self._scale_slider = ctk.CTkSlider(
+            scale_row,
+            from_=0, to=len(self._FONT_SCALES) - 1,
+            number_of_steps=len(self._FONT_SCALES) - 1,
+            command=self._on_scale_change,
+        )
+        self._scale_slider.set(current_idx)
+        self._scale_slider.pack(side="left", fill="x", expand=True, padx=(0, 12))
+
+        ctk.CTkLabel(
+            self,
+            text="  ".join([f"{v:.2f}×" for v in self._FONT_SCALES]),
+            text_color=TEXT_SEC, font=ctk.CTkFont(size=10),
+        ).pack(anchor="w", padx=28)
+
+        # ── Leitor de tela ────────────────────────────────────────────────────
+        sep3 = ctk.CTkFrame(self, height=1, fg_color="gray30")
+        sep3.pack(fill="x", padx=20, pady=(14, 0))
+
+        row_tts = ctk.CTkFrame(self, fg_color="transparent")
+        row_tts.pack(fill="x", **pad)
+        ctk.CTkLabel(
+            row_tts, text="Leitor de Tela (TTS)",
+            font=ctk.CTkFont(size=13, weight="bold"),
+        ).pack(side="left")
+        ctk.CTkLabel(
+            row_tts, text="Lê seções e avisos em voz alta",
+            text_color=TEXT_SEC, font=ctk.CTkFont(size=11),
+        ).pack(side="left", padx=(10, 0))
+        self._tts_var = ctk.BooleanVar(value=self._work["tts_enabled"])
+        ctk.CTkSwitch(
+            self, text="", variable=self._tts_var,
+            onvalue=True, offvalue=False,
+        ).pack(anchor="w", padx=28, pady=(6, 0))
+
+        # Velocidade da fala
+        speed_row = ctk.CTkFrame(self, fg_color="transparent")
+        speed_row.pack(fill="x", padx=28, pady=(8, 0))
+        ctk.CTkLabel(speed_row, text="Velocidade da fala:", text_color=TEXT_SEC,
+                     font=ctk.CTkFont(size=12)).pack(side="left")
+        self._rate_label = ctk.CTkLabel(
+            speed_row,
+            text=f"{self._work['tts_rate']} WPM",
+            font=ctk.CTkFont(size=12, weight="bold"), width=70,
+        )
+        self._rate_label.pack(side="right")
+        self._rate_slider = ctk.CTkSlider(
+            speed_row, from_=80, to=280,
+            number_of_steps=40,
+            command=self._on_rate_change,
+        )
+        self._rate_slider.set(self._work["tts_rate"])
+        self._rate_slider.pack(side="left", fill="x", expand=True, padx=(10, 12))
+
+        # ── Botões ────────────────────────────────────────────────────────────
+        sep4 = ctk.CTkFrame(self, height=1, fg_color="gray30")
+        sep4.pack(fill="x", padx=20, pady=(14, 0))
+
+        btn_row = ctk.CTkFrame(self, fg_color="transparent")
+        btn_row.pack(fill="x", padx=28, pady=(14, 20))
+
+        ctk.CTkButton(
+            btn_row, text="🔊 Testar fala",
+            fg_color=ACCENT, hover_color="#0b2747",
+            font=ctk.CTkFont(size=13), height=36,
+            command=self._test_speech,
+        ).pack(side="left", padx=(0, 10))
+
+        ctk.CTkButton(
+            btn_row, text="Aplicar e Salvar",
+            fg_color=ACCENT2, hover_color="#c73652",
+            font=ctk.CTkFont(size=13, weight="bold"), height=36,
+            command=self._apply,
+        ).pack(side="left")
+
+        self._status = ctk.CTkLabel(
+            self, text="", text_color=TEXT_SEC,
+            font=ctk.CTkFont(size=11),
+        )
+        self._status.pack(pady=(0, 10))
+
+    def _on_scale_change(self, val):
+        idx = round(float(val))
+        scale = self._FONT_SCALES[idx]
+        self._work["font_scale"] = scale
+        self._scale_label.configure(text=f"{scale:.2f}×")
+
+    def _on_rate_change(self, val):
+        rate = int(float(val))
+        self._work["tts_rate"] = rate
+        self._rate_label.configure(text=f"{rate} WPM")
+
+    def _test_speech(self):
+        self._mgr.settings["tts_enabled"] = True
+        self._mgr.update_tts_rate(self._work["tts_rate"])
+        self._mgr.speak("Task Flow. Acessibilidade ativada. Leitura de tela funcionando.")
+        self._status.configure(text="Fala de teste enviada.")
+
+    def _apply(self):
+        self._mgr.settings["high_contrast"] = self._hc_var.get()
+        self._mgr.settings["font_scale"] = self._work["font_scale"]
+        self._mgr.settings["tts_enabled"] = self._tts_var.get()
+        self._mgr.settings["tts_rate"] = self._work["tts_rate"]
+        self._mgr.update_tts_rate(self._work["tts_rate"])
+        self._mgr.apply_all()
+        self._mgr.save()
+        self._status.configure(text="✓ Configurações aplicadas e salvas.")
+        if self._mgr.settings["tts_enabled"]:
+            self._mgr.speak("Configurações de acessibilidade aplicadas.")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
