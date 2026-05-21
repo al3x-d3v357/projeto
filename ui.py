@@ -1051,7 +1051,7 @@ class AccessibilityWindow(ctk.CTkToplevel):
     def _test_speech(self):
         self._mgr.settings["tts_enabled"] = True
         self._mgr.update_tts_rate(self._work["tts_rate"])
-        self._mgr.speak("Task Flow. Acessibilidade ativada. Leitura de tela funcionando.")
+        self._mgr.speak("Teste de leitura completo. Se você ouvir esta frase inteira, o leitor de tela está funcionando corretamente.")
         self._status.configure(text="Fala de teste enviada.")
 
     def _apply(self):
