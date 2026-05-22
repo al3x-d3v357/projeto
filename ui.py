@@ -38,6 +38,13 @@ class App(ctk.CTk):
         self._build_frames()
         self._start_habits_loop()
         self._start_task_reminders_loop()
+        self._section_names = {
+            "tarefas": "Tarefas",
+            "downloads": "Organizar Downloads",
+            "agenda": "Agenda Semanal",
+            "habitos": "Lembretes de Habitos",
+            "compras": "Lista de Compras",
+        }
         self._show_frame("tarefas")
         self._accessibility_win = None
 
@@ -88,29 +95,45 @@ class App(ctk.CTk):
 
         self._nav_buttons = {}
         nav_items = [
-            ("tarefas",    "✅  Tarefas"),
-            ("downloads",  "📁  Downloads"),
-            ("agenda",     "📅  Agenda"),
-            ("habitos",    "⏰  Hábitos"),
-            ("compras",    "🛒  Compras"),
+            ("tarefas", "✅  Tarefas", "Tarefas: adiciona, conclui e organiza seus afazeres."),
+            ("downloads", "📁  Downloads", "Downloads: organiza automaticamente os arquivos da pasta escolhida."),
+            ("agenda", "📅  Agenda", "Agenda: gera e exibe a agenda semanal."),
+            ("habitos", "⏰  Hábitos", "Hábitos: cria lembretes recorrentes para sua rotina."),
+            ("compras", "🛒  Compras", "Compras: controla itens, quantidades e total estimado."),
         ]
-        for key, label in nav_items:
+        for key, label, hint in nav_items:
             btn = ctk.CTkButton(
                 self.sidebar, text=label, anchor="w",
                 fg_color="transparent", hover_color=ACCENT,
                 font=ctk.CTkFont(size=13), height=40,
-                command=lambda k=key: self._show_frame(k),
+                command=lambda k=key: self._on_nav_click(k),
             )
             btn.pack(fill="x", padx=10, pady=2)
             self._nav_buttons[key] = btn
+            self._bind_audio_hint(btn, hint)
 
         # Botão de acessibilidade fixado no rodapé da sidebar
-        ctk.CTkButton(
+        self._btn_accessibility = ctk.CTkButton(
             self.sidebar, text="♿  Acessibilidade", anchor="w",
             fg_color="transparent", hover_color="#2d3748",
             font=ctk.CTkFont(size=12), height=36,
             command=self._open_accessibility,
-        ).pack(side="bottom", fill="x", padx=10, pady=(0, 12))
+        )
+        self._btn_accessibility.pack(side="bottom", fill="x", padx=10, pady=(0, 12))
+        self._bind_audio_hint(
+            self._btn_accessibility,
+            "Acessibilidade: ajuste contraste, tamanho da fonte, leitor de tela e audios explicativos.",
+        )
+
+    def _bind_audio_hint(self, widget, text: str):
+        widget.bind("<Enter>", lambda _e, t=text: self._speak_option_hint(t))
+        widget.bind("<FocusIn>", lambda _e, t=text: self._speak_option_hint(t))
+
+    def _speak_option_hint(self, text: str):
+        mgr = accessibility.get_manager()
+        if not mgr.settings.get("audio_guidance_enabled", True):
+            return
+        mgr.speak(text)
 
     def _highlight_nav(self, active_key: str):
         for key, btn in self._nav_buttons.items():
@@ -137,19 +160,21 @@ class App(ctk.CTk):
             return
         self._accessibility_win = AccessibilityWindow(self)
 
-    def _show_frame(self, key: str):
+    def _on_nav_click(self, key: str):
+        # Fala imediatamente ao clicar na opcao para dar feedback mesmo se a aba demorar para carregar.
+        accessibility.get_manager().speak(self._section_names.get(key, key))
+        self._show_frame(key, announce=False)
+
+    def _show_frame(self, key: str, announce: bool = True):
         self.frames[key].tkraise()
         self._highlight_nav(key)
         if hasattr(self.frames[key], "on_show"):
-            self.frames[key].on_show()
-        _section_names = {
-            "tarefas": "Tarefas",
-            "downloads": "Organizar Downloads",
-            "agenda": "Agenda Semanal",
-            "habitos": "Lembretes de Hábitos",
-            "compras": "Lista de Compras",
-        }
-        accessibility.get_manager().speak(_section_names.get(key, key))
+            try:
+                self.frames[key].on_show()
+            except Exception:
+                pass
+        if announce:
+            accessibility.get_manager().speak(self._section_names.get(key, key))
 
 
 # ── Componentes reutilizáveis ─────────────────────────────────────────────────
@@ -986,10 +1011,31 @@ class AccessibilityWindow(ctk.CTkToplevel):
             text_color=TEXT_SEC, font=ctk.CTkFont(size=11),
         ).pack(side="left", padx=(10, 0))
         self._tts_var = ctk.BooleanVar(value=self._work["tts_enabled"])
-        ctk.CTkSwitch(
+        tts_switch = ctk.CTkSwitch(
             self, text="", variable=self._tts_var,
             onvalue=True, offvalue=False,
-        ).pack(anchor="w", padx=28, pady=(6, 0))
+        )
+        tts_switch.pack(anchor="w", padx=28, pady=(6, 0))
+
+        # Áudios explicativos por opção
+        row_guidance = ctk.CTkFrame(self, fg_color="transparent")
+        row_guidance.pack(fill="x", padx=28, pady=(10, 0))
+        ctk.CTkLabel(
+            row_guidance, text="Áudios explicativos",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(side="left")
+        ctk.CTkLabel(
+            row_guidance, text="Descreve cada opção ao focar ou passar o mouse",
+            text_color=TEXT_SEC, font=ctk.CTkFont(size=10),
+        ).pack(side="left", padx=(8, 0))
+        self._audio_guidance_var = ctk.BooleanVar(
+            value=self._work.get("audio_guidance_enabled", True)
+        )
+        guidance_switch = ctk.CTkSwitch(
+            self, text="", variable=self._audio_guidance_var,
+            onvalue=True, offvalue=False,
+        )
+        guidance_switch.pack(anchor="w", padx=28, pady=(6, 0))
 
         # Velocidade da fala
         speed_row = ctk.CTkFrame(self, fg_color="transparent")
@@ -1037,6 +1083,21 @@ class AccessibilityWindow(ctk.CTkToplevel):
         )
         self._status.pack(pady=(0, 10))
 
+        self._bind_audio_hint(tts_switch, "Ativa ou desativa a leitura de tela em voz alta.")
+        self._bind_audio_hint(guidance_switch, "Ativa audios que explicam as opcoes da interface.")
+        self._bind_audio_hint(self._scale_slider, "Ajusta o tamanho geral da interface para facilitar leitura.")
+        self._bind_audio_hint(self._rate_slider, "Ajusta a velocidade da voz do leitor de tela.")
+
+    def _bind_audio_hint(self, widget, text: str):
+        widget.bind("<Enter>", lambda _e, t=text: self._speak_hint(t))
+        widget.bind("<FocusIn>", lambda _e, t=text: self._speak_hint(t))
+
+    def _speak_hint(self, text: str):
+        if not self._audio_guidance_var.get():
+            return
+        self._mgr.settings["tts_enabled"] = self._tts_var.get()
+        self._mgr.speak(text)
+
     def _on_scale_change(self, val):
         idx = round(float(val))
         scale = self._FONT_SCALES[idx]
@@ -1058,6 +1119,7 @@ class AccessibilityWindow(ctk.CTkToplevel):
         self._mgr.settings["high_contrast"] = self._hc_var.get()
         self._mgr.settings["font_scale"] = self._work["font_scale"]
         self._mgr.settings["tts_enabled"] = self._tts_var.get()
+        self._mgr.settings["audio_guidance_enabled"] = self._audio_guidance_var.get()
         self._mgr.settings["tts_rate"] = self._work["tts_rate"]
         self._mgr.update_tts_rate(self._work["tts_rate"])
         self._mgr.apply_all()

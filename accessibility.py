@@ -4,6 +4,7 @@ import json
 import queue
 import threading
 import re
+import time
 
 import customtkinter as ctk
 
@@ -12,6 +13,7 @@ from config import ACCESSIBILITY_FILE
 _DEFAULTS: dict = {
     "tts_enabled": False,
     "tts_rate": 165,
+    "audio_guidance_enabled": True,
     "high_contrast": False,
     "font_scale": 1.0,
 }
@@ -24,6 +26,8 @@ class AccessibilityManager:
         self._tts_engine = None
         self._sapi_voice = None
         self._tts_ready = threading.Event()
+        self._last_spoken_text = ""
+        self._last_spoken_at = 0.0
         self.load()
         self._start_tts_thread()
 
@@ -119,6 +123,12 @@ class AccessibilityManager:
         normalized = self._normalize_text(text)
         if not normalized:
             return
+        now = time.time()
+        # Evita repetir a mesma frase diversas vezes em sequência ao mover o mouse.
+        if normalized == self._last_spoken_text and (now - self._last_spoken_at) < 1.2:
+            return
+        self._last_spoken_text = normalized
+        self._last_spoken_at = now
         # Descarta itens pendentes para evitar acúmulo de fala
         while not self._tts_queue.empty():
             try:
