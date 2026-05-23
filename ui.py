@@ -88,10 +88,37 @@ class App(ctk.CTk):
         self.sidebar.pack(side="left", fill="y")
         self.sidebar.pack_propagate(False)
 
+        # Adiciona o logo ao lado do nome TaskFlow
+        logo_error = None
+        self._logo_ctk = None
+        try:
+            try:
+                from PIL import Image
+            except ImportError:
+                logo_error = "Pillow (PIL) não está instalado. Instale com: pip install pillow"
+                Image = None
+            if Image:
+                try:
+                    logo_img = Image.open("img/logo.png")
+                    logo_img = logo_img.resize((64, 64), Image.LANCZOS)
+                    self._logo_ctk = ctk.CTkImage(light_image=logo_img, dark_image=logo_img, size=(32, 32))
+                except Exception as e:
+                    logo_error = f"Erro ao abrir img/logo.png: {e}"
+        except Exception as e:
+            logo_error = f"Erro inesperado: {e}"
+
+        title_row = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        title_row.pack(pady=(24, 24), padx=10, fill="x")
+        if self._logo_ctk:
+            ctk.CTkLabel(title_row, image=self._logo_ctk, text="", width=36).pack(side="left", padx=(0, 6))
+        else:
+            ctk.CTkLabel(title_row, text="[sem logo]", text_color="#ff5555").pack(side="left", padx=(0, 6))
         ctk.CTkLabel(
-            self.sidebar, text="⚡ Task Flow", font=ctk.CTkFont(size=16, weight="bold"),
+            title_row, text="TaskFlow", font=ctk.CTkFont(size=16, weight="bold"),
             text_color="white"
-        ).pack(pady=(28, 24), padx=16)
+        ).pack(side="left")
+        if logo_error:
+            ctk.CTkLabel(self.sidebar, text=logo_error, text_color="#ff5555", font=ctk.CTkFont(size=10)).pack(pady=(0, 8), padx=10)
 
         self._nav_buttons = {}
         nav_items = [
