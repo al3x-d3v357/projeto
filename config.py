@@ -72,5 +72,16 @@ def _ensure_default_files() -> None:
         with open(BILLS_FILE, "w", encoding="utf-8") as f:
             f.write(default_bills)
 
+    if not os.path.exists(ACCESSIBILITY_FILE):
+        default_accessibility = {
+            "high_contrast": False,
+            "font_scale": 1.0,
+            "tts_enabled": False,
+            "audio_guidance_enabled": True,
+            "tts_rate": 150,
+        }
+        with open(ACCESSIBILITY_FILE, "w", encoding="utf-8") as f:
+            json.dump(default_accessibility, f, ensure_ascii=False, indent=2)
+
 
 _ensure_default_files()

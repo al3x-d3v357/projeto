@@ -144,8 +144,8 @@ class App(ctk.CTk):
 
     def _bind_audio_hint(self, widget, text: str):
         widget._a11y_has_hint = True
-        widget.bind("<Enter>", lambda _e, t=text: self._speak_option_hint(t))
-        widget.bind("<FocusIn>", lambda _e, t=text: self._speak_option_hint(t))
+        widget.bind("<Enter>", lambda _e, t=text: self._speak_option_hint(t), add="+")
+        widget.bind("<FocusIn>", lambda _e, t=text: self._speak_option_hint(t), add="+")
 
     def _speak_option_hint(self, text: str):
         mgr = accessibility.get_manager()
@@ -245,8 +245,8 @@ def action_btn(parent, text, command, color=None, hover_color=None):
 
 def bind_audio_hint(widget, text: str):
     widget._a11y_has_hint = True
-    widget.bind("<Enter>", lambda _e, t=text: _speak_audio_hint(t))
-    widget.bind("<FocusIn>", lambda _e, t=text: _speak_audio_hint(t))
+    widget.bind("<Enter>", lambda _e, t=text: _speak_audio_hint(t), add="+")
+    widget.bind("<FocusIn>", lambda _e, t=text: _speak_audio_hint(t), add="+")
 
 
 def _speak_audio_hint(text: str):
@@ -1270,8 +1270,8 @@ class AccessibilityWindow(ctk.CTkToplevel):
         bind_audio_hints_recursively(self, prefix="Acessibilidade")
 
     def _bind_audio_hint(self, widget, text: str):
-        widget.bind("<Enter>", lambda _e, t=text: self._speak_hint(t))
-        widget.bind("<FocusIn>", lambda _e, t=text: self._speak_hint(t))
+        widget.bind("<Enter>", lambda _e, t=text: self._speak_hint(t), add="+")
+        widget.bind("<FocusIn>", lambda _e, t=text: self._speak_hint(t), add="+")
 
     def _speak_hint(self, text: str):
         if not self._audio_guidance_var.get():
