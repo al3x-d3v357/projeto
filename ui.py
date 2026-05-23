@@ -16,11 +16,11 @@ ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
 SIDEBAR_W = 200
-BG_DARK   = "#1a1a2e"
-BG_CARD   = "#16213e"
-ACCENT    = "#0f3460"
-ACCENT2   = "#e94560"
-TEXT_SEC  = "#a0aec0"
+BG_DARK   = "#043143"
+BG_CARD   = "#043143"
+ACCENT    = "#c1b29a"
+ACCENT2   = "#dfd0b8"
+TEXT_SEC  = "#ffffff"
 
 # ── Janela principal ─────────────────────────────────────────────────────────
 class App(ctk.CTk):
@@ -40,7 +40,7 @@ class App(ctk.CTk):
         self._start_task_reminders_loop()
         self._section_names = {
             "tarefas": "Tarefas",
-            "downloads": "Organizar Downloads",
+            "downloads": "Organizar pastas",
             "agenda": "Agenda Semanal",
             "habitos": "Lembretes de Habitos",
             "compras": "Lista de Compras",
@@ -96,7 +96,7 @@ class App(ctk.CTk):
         self._nav_buttons = {}
         nav_items = [
             ("tarefas", "✅  Tarefas", "Tarefas: adiciona, conclui e organiza seus afazeres."),
-            ("downloads", "📁  Downloads", "Downloads: organiza automaticamente os arquivos da pasta escolhida."),
+            ("downloads", "📁  Organizar pastas", "Organizar pastas: organiza automaticamente os arquivos da pasta escolhida."),
             ("agenda", "📅  Agenda", "Agenda: gera e exibe a agenda semanal."),
             ("habitos", "⏰  Hábitos", "Hábitos: cria lembretes recorrentes para sua rotina."),
             ("compras", "🛒  Compras", "Compras: controla itens, quantidades e total estimado."),
@@ -112,10 +112,27 @@ class App(ctk.CTk):
             self._nav_buttons[key] = btn
             self._bind_audio_hint(btn, hint)
 
+        self._btn_accessibility_toggle = ctk.CTkButton(
+            self.sidebar,
+            text="",
+            anchor="w",
+            fg_color=BG_DARK,
+            hover_color=ACCENT,
+            font=ctk.CTkFont(size=12),
+            height=36,
+            command=self._toggle_accessibility,
+        )
+        self._btn_accessibility_toggle.pack(side="bottom", fill="x", padx=10, pady=(0, 8))
+        self._update_accessibility_toggle_button()
+        self._bind_audio_hint(
+            self._btn_accessibility_toggle,
+            "Ativa ou desativa a acessibilidade global da aplicação.",
+        )
+
         # Botão de acessibilidade fixado no rodapé da sidebar
         self._btn_accessibility = ctk.CTkButton(
             self.sidebar, text="♿  Acessibilidade", anchor="w",
-            fg_color="transparent", hover_color="#2d3748",
+            fg_color="transparent", hover_color=BG_DARK,
             font=ctk.CTkFont(size=12), height=36,
             command=self._open_accessibility,
         )
@@ -126,6 +143,7 @@ class App(ctk.CTk):
         )
 
     def _bind_audio_hint(self, widget, text: str):
+        widget._a11y_has_hint = True
         widget.bind("<Enter>", lambda _e, t=text: self._speak_option_hint(t))
         widget.bind("<FocusIn>", lambda _e, t=text: self._speak_option_hint(t))
 
@@ -134,6 +152,34 @@ class App(ctk.CTk):
         if not mgr.settings.get("audio_guidance_enabled", True):
             return
         mgr.speak(text)
+
+    def _is_accessibility_enabled(self) -> bool:
+        mgr = accessibility.get_manager()
+        return bool(mgr.settings.get("tts_enabled", False) and mgr.settings.get("audio_guidance_enabled", True))
+
+    def _update_accessibility_toggle_button(self):
+        enabled = self._is_accessibility_enabled()
+        self._btn_accessibility_toggle.configure(
+            text=f"🔊 Acessibilidade: {'ON' if enabled else 'OFF'}",
+            fg_color=ACCENT if enabled else BG_DARK,
+            hover_color=BG_CARD if enabled else ACCENT,
+        )
+
+    def _toggle_accessibility(self):
+        mgr = accessibility.get_manager()
+        enabled = self._is_accessibility_enabled()
+
+        if enabled:
+            mgr.speak("Acessibilidade desativada")
+            mgr.settings["audio_guidance_enabled"] = False
+            mgr.settings["tts_enabled"] = False
+        else:
+            mgr.settings["audio_guidance_enabled"] = True
+            mgr.settings["tts_enabled"] = True
+            mgr.speak("Acessibilidade ativada")
+
+        mgr.save()
+        self._update_accessibility_toggle_button()
 
     def _highlight_nav(self, active_key: str):
         for key, btn in self._nav_buttons.items():
@@ -187,13 +233,69 @@ def status_label(parent):
     lbl.pack(anchor="w", padx=28, pady=(0, 10))
     return lbl
 
-def action_btn(parent, text, command, color=None):
-    return ctk.CTkButton(
+def action_btn(parent, text, command, color=None, hover_color=None):
+    btn = ctk.CTkButton(
         parent, text=text, command=command,
-        fg_color=color or ACCENT2, hover_color="#c73652",
+        fg_color=color or ACCENT2, hover_color=hover_color or BG_CARD,
         font=ctk.CTkFont(size=13, weight="bold"),
         height=36, corner_radius=8,
     )
+    return btn
+
+
+def bind_audio_hint(widget, text: str):
+    widget._a11y_has_hint = True
+    widget.bind("<Enter>", lambda _e, t=text: _speak_audio_hint(t))
+    widget.bind("<FocusIn>", lambda _e, t=text: _speak_audio_hint(t))
+
+
+def _speak_audio_hint(text: str):
+    mgr = accessibility.get_manager()
+    if not mgr.settings.get("audio_guidance_enabled", True):
+        return
+    mgr.speak(text)
+
+
+def _widget_text(widget, key: str, default: str = "") -> str:
+    try:
+        value = widget.cget(key)
+        return str(value).strip() if value is not None else default
+    except Exception:
+        return default
+
+
+def _auto_audio_hint(widget, prefix: str = "") -> str:
+    cls = str(widget.winfo_class() or "")
+    text = _widget_text(widget, "text")
+
+    if "CTkButton" in cls:
+        base = text or "Botão"
+    elif "CTkSwitch" in cls:
+        base = text or "Interruptor"
+    elif "CTkOptionMenu" in cls:
+        base = text or "Menu de opções"
+    elif "CTkEntry" in cls:
+        base = _widget_text(widget, "placeholder_text") or "Campo de texto"
+    elif "CTkSlider" in cls:
+        base = "Controle deslizante"
+    elif "CTkCheckBox" in cls:
+        base = text or "Caixa de seleção"
+    elif "CTkRadioButton" in cls:
+        base = text or "Opção"
+    else:
+        return ""
+
+    return f"{prefix}. {base}" if prefix else base
+
+
+def bind_audio_hints_recursively(container, prefix: str = ""):
+    for child in container.winfo_children():
+        if not getattr(child, "_a11y_has_hint", False):
+            hint = _auto_audio_hint(child, prefix=prefix)
+            if hint:
+                bind_audio_hint(child, hint)
+        if child.winfo_children():
+            bind_audio_hints_recursively(child, prefix=prefix)
 
 def card_frame(parent):
     return ctk.CTkFrame(parent, fg_color=BG_CARD, corner_radius=12)
@@ -221,6 +323,7 @@ class TarefasFrame(ctk.CTkFrame):
         for w in self.winfo_children():
             w.destroy()
         self._build()
+        _speak_audio_hint("Seção Tarefas. Use o filtro, a ordenação e os botões de cada tarefa para organizar seus afazeres.")
 
     def _build(self):
         section_title(self, "✅  Tarefas")
@@ -239,6 +342,7 @@ class TarefasFrame(ctk.CTkFrame):
             width=150,
         )
         self._filter_menu.pack(side="left", padx=(0, 12))
+        bind_audio_hint(self._filter_menu, "Filtro de tarefas. Escolha quais tarefas quer ver na lista.")
 
         self._sort_switch = ctk.CTkSwitch(
             controls,
@@ -247,8 +351,9 @@ class TarefasFrame(ctk.CTkFrame):
         )
         self._sort_switch.select()
         self._sort_switch.pack(side="left", padx=(0, 8))
+        bind_audio_hint(self._sort_switch, "Ordenar por vencimento. Coloca primeiro as tarefas mais urgentes.")
 
-        ctk.CTkButton(
+        btn_update = ctk.CTkButton(
             controls,
             text="Atualizar",
             width=90,
@@ -256,17 +361,21 @@ class TarefasFrame(ctk.CTkFrame):
             fg_color=ACCENT,
             hover_color="#0b2747",
             command=self._refresh_list,
-        ).pack(side="left")
+        )
+        btn_update.pack(side="left")
+        bind_audio_hint(btn_update, "Atualizar a lista de tarefas.")
 
-        ctk.CTkButton(
+        btn_reminder = ctk.CTkButton(
             controls,
             text="🔔 Lembrete",
             width=110,
             height=30,
-            fg_color="#7c3aed",
-            hover_color="#6d28d9",
+            fg_color="#043143",
+            hover_color=ACCENT,
             command=self._send_reminder,
-        ).pack(side="left", padx=(10, 0))
+        )
+        btn_reminder.pack(side="left", padx=(10, 0))
+        bind_audio_hint(btn_reminder, "Envia um lembrete da seção de tarefas.")
 
         # Entrada de nova tarefa
         card = card_frame(self)
@@ -278,6 +387,7 @@ class TarefasFrame(ctk.CTkFrame):
         self._entry = ctk.CTkEntry(row, placeholder_text="Nova tarefa...",
                                    height=36, font=ctk.CTkFont(size=13))
         self._entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        bind_audio_hint(self._entry, "Campo para digitar o título da nova tarefa.")
 
         self._due_options = self._build_due_options()
         self._due_var = ctk.StringVar(value=self._due_options[0])
@@ -289,6 +399,7 @@ class TarefasFrame(ctk.CTkFrame):
             width=190,
         )
         self._due_menu.pack(side="left", padx=(0, 8))
+        bind_audio_hint(self._due_menu, "Data de vencimento da tarefa. Escolha quando a tarefa deve ser concluída.")
 
         self._time_options = ["Sem horario"] + [
             f"{hour:02d}:{minute:02d}"
@@ -304,15 +415,18 @@ class TarefasFrame(ctk.CTkFrame):
             state="disabled",
         )
         self._time_menu.pack(side="left", padx=(0, 8))
+        bind_audio_hint(self._time_menu, "Horário do lembrete. Só fica disponível quando a tarefa tem data.")
 
         self._add_btn = action_btn(row, "+ Adicionar", self._add_task)
         self._add_btn.pack(side="left")
+        bind_audio_hint(self._add_btn, "Adiciona a nova tarefa à lista.")
 
         # Lista de tarefas
         self._list_frame = ctk.CTkScrollableFrame(self, fg_color=BG_DARK, corner_radius=0)
         self._list_frame.pack(fill="both", expand=True, padx=24)
 
         self._refresh_list()
+        bind_audio_hints_recursively(self, prefix="Tarefas")
 
     def _build_due_options(self) -> list:
         self._due_label_to_iso = {"Sem data": None}
@@ -377,7 +491,7 @@ class TarefasFrame(ctk.CTkFrame):
         row.pack_propagate(False)
 
         done = task["status"] == "concluída"
-        color = "#4ade80" if done else ACCENT2
+        color = "#c1b29a" if done else ACCENT2
         icon  = "✓" if done else "○"
 
         ctk.CTkLabel(row, text=icon, text_color=color,
@@ -396,17 +510,19 @@ class TarefasFrame(ctk.CTkFrame):
                      font=ctk.CTkFont(size=11)).pack(side="left", padx=8)
 
         if not done:
-            ctk.CTkButton(row, text="Concluir", width=70, height=28,
-                          fg_color="#16a34a", hover_color="#15803d",
-                          font=ctk.CTkFont(size=11),
-                          command=lambda tid=task["id"]: self._complete(tid)
-                          ).pack(side="left", padx=4)
+            btn_complete = ctk.CTkButton(row, text="Concluir", width=70, height=28,
+                                         fg_color="#c1b29a", hover_color="#dfd0b8",
+                                         font=ctk.CTkFont(size=11),
+                                         command=lambda tid=task["id"]: self._complete(tid))
+            btn_complete.pack(side="left", padx=4)
+            bind_audio_hint(btn_complete, f"Concluir a tarefa {task['title']}.")
 
-        ctk.CTkButton(row, text="✕", width=30, height=28,
-                      fg_color="#374151", hover_color="#6b7280",
-                      font=ctk.CTkFont(size=11),
-                      command=lambda tid=task["id"]: self._delete(tid)
-                      ).pack(side="left", padx=(0, 10))
+        btn_delete = ctk.CTkButton(row, text="✕", width=30, height=28,
+                                   fg_color="#c1b29a", hover_color="#dfd0b8",
+                                   font=ctk.CTkFont(size=11),
+                                   command=lambda tid=task["id"]: self._delete(tid))
+        btn_delete.pack(side="left", padx=(0, 10))
+        bind_audio_hint(btn_delete, f"Excluir a tarefa {task['title']}.")
 
     def _add_task(self):
         title = self._entry.get().strip()
@@ -454,7 +570,7 @@ class TarefasFrame(ctk.CTkFrame):
             self._status.configure(text="Não foi possível enviar o lembrete.")
 
 
-# ── Frame: Downloads ──────────────────────────────────────────────────────────
+# ── Frame: Organizar pastas ──────────────────────────────────────────────────
 class DownloadsFrame(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master, fg_color=BG_DARK, corner_radius=0)
@@ -466,9 +582,10 @@ class DownloadsFrame(ctk.CTkFrame):
         if not self._built:
             self._build()
             self._built = True
+        _speak_audio_hint("Seção Organizar pastas. Escolha a pasta, pré-visualize ou organize os arquivos automaticamente.")
 
     def _build(self):
-        section_title(self, "📁  Organizar Downloads")
+        section_title(self, "📁  Organizar pastas")
         self._status = status_label(self)
 
         folder_row = ctk.CTkFrame(self, fg_color="transparent")
@@ -477,30 +594,42 @@ class DownloadsFrame(ctk.CTkFrame):
         self._folder_var = ctk.StringVar(value=self._target_dir)
         self._folder_entry = ctk.CTkEntry(folder_row, textvariable=self._folder_var, state="readonly")
         self._folder_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        bind_audio_hint(self._folder_entry, "Mostra a pasta escolhida para organizar os arquivos.")
         self._btn_pick_folder = ctk.CTkButton(
             folder_row,
             text="Escolher pasta",
             width=130,
             height=32,
-            fg_color="#374151",
-            hover_color="#4b5563",
+            fg_color="#c1b29a",
+            hover_color="#dfd0b8",
             command=self._pick_folder,
         )
         self._btn_pick_folder.pack(side="left")
+        bind_audio_hint(self._btn_pick_folder, "Abre a seleção de pasta para escolher onde organizar os arquivos.")
 
         btns = ctk.CTkFrame(self, fg_color="transparent")
         btns.pack(anchor="w", padx=28, pady=(0, 16))
         self._btn_preview = action_btn(btns, "👁  Pré-visualizar", self._preview, color=ACCENT)
         self._btn_preview.pack(side="left", padx=(0, 10))
+        bind_audio_hint(self._btn_preview, "Simula a organização sem mover os arquivos.")
         self._btn_organize = action_btn(btns, "🚀  Organizar agora", self._organize)
         self._btn_organize.pack(side="left")
-        self._btn_reminder = action_btn(btns, "🔔 Lembrete", self._send_reminder, color="#7c3aed")
+        bind_audio_hint(self._btn_organize, "Organiza os arquivos da pasta escolhida.")
+        self._btn_reminder = action_btn(
+            btns,
+            "🔔 Lembrete",
+            self._send_reminder,
+            color=BG_DARK,
+            hover_color=ACCENT,
+        )
         self._btn_reminder.pack(side="left", padx=(10, 0))
+        bind_audio_hint(self._btn_reminder, "Envia um lembrete da seção Organizar pastas.")
 
         self._log = ctk.CTkTextbox(self, state="disabled", fg_color=BG_CARD,
                                     font=ctk.CTkFont(family="Consolas", size=12),
                                     corner_radius=10)
         self._log.pack(fill="both", expand=True, padx=24, pady=(0, 16))
+        bind_audio_hints_recursively(self, prefix="Organizar pastas")
 
     def _log_write(self, text):
         self._log.configure(state="normal")
@@ -563,8 +692,8 @@ class DownloadsFrame(ctk.CTkFrame):
         threading.Thread(target=run, daemon=True).start()
 
     def _send_reminder(self):
-        if send_section_reminder("Downloads"):
-            self._status.configure(text="Lembrete de downloads enviado.")
+        if send_section_reminder("Organizar pastas"):
+            self._status.configure(text="Lembrete de Organizar pastas enviado.")
         else:
             self._status.configure(text="Não foi possível enviar o lembrete.")
 
@@ -579,6 +708,7 @@ class AgendaFrame(ctk.CTkFrame):
         if not self._built:
             self._build()
             self._built = True
+        _speak_audio_hint("Seção Agenda. Gere a agenda da semana ou informe uma data específica para criar o arquivo.")
 
     def _build(self):
         section_title(self, "📅  Agenda Semanal")
@@ -587,18 +717,32 @@ class AgendaFrame(ctk.CTkFrame):
         row = ctk.CTkFrame(self, fg_color="transparent")
         row.pack(anchor="w", padx=28, pady=(0, 16))
 
-        action_btn(row, "⚡  Gerar semana atual", self._generate_current).pack(side="left", padx=(0, 10))
+        btn_generate_current = action_btn(row, "⚡  Gerar semana atual", self._generate_current)
+        btn_generate_current.pack(side="left", padx=(0, 10))
+        bind_audio_hint(btn_generate_current, "Gera a agenda da semana atual.")
 
         self._date_entry = ctk.CTkEntry(row, placeholder_text="Outra data (YYYY-MM-DD)",
                                          width=200, height=36, font=ctk.CTkFont(size=13))
         self._date_entry.pack(side="left", padx=(0, 8))
-        action_btn(row, "Gerar", self._generate_custom, color=ACCENT).pack(side="left")
-        action_btn(row, "🔔 Lembrete", self._send_reminder, color="#7c3aed").pack(side="left", padx=(10, 0))
+        bind_audio_hint(self._date_entry, "Campo para digitar uma data no formato ano, mês e dia.")
+        btn_generate_custom = action_btn(row, "Gerar", self._generate_custom, color=ACCENT)
+        btn_generate_custom.pack(side="left")
+        bind_audio_hint(btn_generate_custom, "Gera a agenda para a data digitada.")
+        btn_reminder = action_btn(
+            row,
+            "🔔 Lembrete",
+            self._send_reminder,
+            color=BG_DARK,
+            hover_color=ACCENT,
+        )
+        btn_reminder.pack(side="left", padx=(10, 0))
+        bind_audio_hint(btn_reminder, "Envia um lembrete da seção de agenda.")
 
         self._textbox = ctk.CTkTextbox(self, state="disabled", fg_color=BG_CARD,
                                         font=ctk.CTkFont(family="Consolas", size=12),
                                         corner_radius=10)
         self._textbox.pack(fill="both", expand=True, padx=24, pady=(0, 16))
+        bind_audio_hints_recursively(self, prefix="Agenda")
 
     def _show_file(self, filepath: str):
         try:
@@ -646,6 +790,7 @@ class HabitosFrame(ctk.CTkFrame):
         for w in self.winfo_children():
             w.destroy()
         self._build()
+        _speak_audio_hint("Seção Hábitos. Adicione hábitos, pause, remova ou peça um lembrete imediato.")
 
     def _build(self):
         section_title(self, "⏰  Lembretes de Hábitos")
@@ -660,19 +805,32 @@ class HabitosFrame(ctk.CTkFrame):
         self._title = ctk.CTkEntry(row, placeholder_text="Hábito (água, remédio, alongar)",
                                    height=36, font=ctk.CTkFont(size=13))
         self._title.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        bind_audio_hint(self._title, "Campo para digitar o nome do hábito.")
 
         self._interval = ctk.CTkEntry(row, placeholder_text="Intervalo min", width=120,
                                       height=36, font=ctk.CTkFont(size=13))
         self._interval.insert(0, "120")
         self._interval.pack(side="left", padx=(0, 8))
+        bind_audio_hint(self._interval, "Campo para digitar o intervalo em minutos.")
 
-        action_btn(row, "+ Adicionar", self._add).pack(side="left")
-        action_btn(row, "🔔 Lembrete", self._send_general_reminder, color="#7c3aed").pack(side="left", padx=(8, 0))
+        btn_add = action_btn(row, "+ Adicionar", self._add)
+        btn_add.pack(side="left")
+        bind_audio_hint(btn_add, "Adiciona o novo hábito.")
+        btn_reminder = action_btn(
+            row,
+            "🔔 Lembrete",
+            self._send_general_reminder,
+            color=BG_DARK,
+            hover_color=ACCENT,
+        )
+        btn_reminder.pack(side="left", padx=(8, 0))
+        bind_audio_hint(btn_reminder, "Envia um lembrete da seção de hábitos.")
 
         self._list = ctk.CTkScrollableFrame(self, fg_color=BG_DARK, corner_radius=0)
         self._list.pack(fill="both", expand=True, padx=24)
 
         self._refresh()
+        bind_audio_hints_recursively(self, prefix="Hábitos")
 
     def _refresh(self):
         for w in self._list.winfo_children():
@@ -698,23 +856,29 @@ class HabitosFrame(ctk.CTkFrame):
             ctk.CTkLabel(row, text=state_txt, text_color=state_color,
                          font=ctk.CTkFont(size=12, weight="bold")).pack(side="right", padx=8)
 
-            ctk.CTkButton(
+            btn_remind_now = ctk.CTkButton(
                 row, text="Lembrar agora", width=95, height=28,
                 fg_color=ACCENT, hover_color="#0b2747", font=ctk.CTkFont(size=11),
                 command=lambda hid=h["id"]: self._remind_now(hid),
-            ).pack(side="right", padx=4)
+            )
+            btn_remind_now.pack(side="right", padx=4)
+            bind_audio_hint(btn_remind_now, f"Dispara um lembrete agora para o hábito {h['title']}.")
 
-            ctk.CTkButton(
+            btn_toggle = ctk.CTkButton(
                 row, text="Ativar/Pausar", width=95, height=28,
                 fg_color="#374151", hover_color="#4b5563", font=ctk.CTkFont(size=11),
                 command=lambda hid=h["id"]: self._toggle(hid),
-            ).pack(side="right", padx=4)
+            )
+            btn_toggle.pack(side="right", padx=4)
+            bind_audio_hint(btn_toggle, f"Ativa ou pausa o hábito {h['title']}.")
 
-            ctk.CTkButton(
+            btn_delete = ctk.CTkButton(
                 row, text="✕", width=30, height=28,
                 fg_color="#374151", hover_color="#6b7280", font=ctk.CTkFont(size=11),
                 command=lambda hid=h["id"]: self._delete(hid),
-            ).pack(side="right", padx=4)
+            )
+            btn_delete.pack(side="right", padx=4)
+            bind_audio_hint(btn_delete, f"Exclui o hábito {h['title']}.")
 
     def _add(self):
         title = self._title.get().strip()
@@ -770,6 +934,7 @@ class ComprasFrame(ctk.CTkFrame):
         for w in self.winfo_children():
             w.destroy()
         self._build()
+        _speak_audio_hint("Seção Compras. Adicione itens, marque os comprados e acompanhe o total estimado.")
 
     def _build(self):
         section_title(self, "🛒  Lista de Compras")
@@ -784,22 +949,29 @@ class ComprasFrame(ctk.CTkFrame):
         self._name = ctk.CTkEntry(row, placeholder_text="Item (arroz, leite, sabão)",
                                   height=36, font=ctk.CTkFont(size=13))
         self._name.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        bind_audio_hint(self._name, "Campo para digitar o nome do item de compras.")
 
         self._qty = ctk.CTkEntry(row, placeholder_text="Qtd", width=100,
                                  height=36, font=ctk.CTkFont(size=13))
         self._qty.insert(0, "1")
         self._qty.pack(side="left", padx=(0, 8))
+        bind_audio_hint(self._qty, "Campo para digitar a quantidade do item.")
 
         self._price = ctk.CTkEntry(row, placeholder_text="Valor (R$)", width=120,
                        height=36, font=ctk.CTkFont(size=13))
         self._price.insert(0, "0,00")
         self._price.pack(side="left", padx=(0, 8))
+        bind_audio_hint(self._price, "Campo para digitar o preço estimado do item.")
 
-        action_btn(row, "+ Adicionar", self._add).pack(side="left", padx=(0, 8))
-        ctk.CTkButton(
+        btn_add_item = action_btn(row, "+ Adicionar", self._add)
+        btn_add_item.pack(side="left", padx=(0, 8))
+        bind_audio_hint(btn_add_item, "Adiciona o item à lista de compras.")
+        btn_clear_checked = ctk.CTkButton(
             row, text="Limpar comprados", width=130, height=36,
             fg_color=ACCENT, hover_color="#0b2747", command=self._clear_checked,
-        ).pack(side="left")
+        )
+        btn_clear_checked.pack(side="left")
+        bind_audio_hint(btn_clear_checked, "Remove da lista os itens já comprados.")
 
         self._list = ctk.CTkScrollableFrame(self, fg_color=BG_DARK, corner_radius=0)
         self._list.pack(fill="both", expand=True, padx=24)
@@ -813,6 +985,7 @@ class ComprasFrame(ctk.CTkFrame):
         self._total_label.pack(anchor="e", padx=28, pady=(8, 16))
 
         self._refresh()
+        bind_audio_hints_recursively(self, prefix="Compras")
 
     def _to_float(self, raw_value: str, default: float) -> float:
         txt = (str(raw_value or "").strip()
@@ -867,12 +1040,14 @@ class ComprasFrame(ctk.CTkFrame):
                 fg_color="#16a34a", hover_color="#15803d", font=ctk.CTkFont(size=11),
                 command=lambda iid=item["id"]: self._toggle(iid),
             ).pack(side="left", padx=4)
+            bind_audio_hint(row.winfo_children()[-1], f"Marca ou desmarca o item {item['name']} como comprado.")
 
             ctk.CTkButton(
                 row, text="✕", width=30, height=28,
                 fg_color="#374151", hover_color="#6b7280", font=ctk.CTkFont(size=11),
                 command=lambda iid=item["id"]: self._delete(iid),
             ).pack(side="left", padx=(0, 10))
+            bind_audio_hint(row.winfo_children()[-1], f"Exclui o item {item['name']} da lista de compras.")
 
         self._total_label.configure(text=f"Total estimado: R$ {self._format_brl(total)}")
 
@@ -949,10 +1124,12 @@ class AccessibilityWindow(ctk.CTkToplevel):
             text_color=TEXT_SEC, font=ctk.CTkFont(size=11),
         ).pack(side="left", padx=(10, 0))
         self._hc_var = ctk.BooleanVar(value=self._work["high_contrast"])
-        ctk.CTkSwitch(
+        hc_switch = ctk.CTkSwitch(
             self, text="", variable=self._hc_var,
             onvalue=True, offvalue=False,
-        ).pack(anchor="w", padx=28, pady=(6, 0))
+        )
+        hc_switch.pack(anchor="w", padx=28, pady=(6, 0))
+        bind_audio_hint(hc_switch, "Ativa ou desativa o alto contraste.")
 
         # ── Escala de fonte ───────────────────────────────────────────────────
         sep2 = ctk.CTkFrame(self, height=1, fg_color="gray30")
@@ -989,6 +1166,7 @@ class AccessibilityWindow(ctk.CTkToplevel):
         )
         self._scale_slider.set(current_idx)
         self._scale_slider.pack(side="left", fill="x", expand=True, padx=(0, 12))
+        bind_audio_hint(self._scale_slider, "Ajusta o tamanho geral da interface.")
 
         ctk.CTkLabel(
             self,
@@ -1016,6 +1194,7 @@ class AccessibilityWindow(ctk.CTkToplevel):
             onvalue=True, offvalue=False,
         )
         tts_switch.pack(anchor="w", padx=28, pady=(6, 0))
+        bind_audio_hint(tts_switch, "Ativa ou desativa o leitor de tela em voz alta.")
 
         # Áudios explicativos por opção
         row_guidance = ctk.CTkFrame(self, fg_color="transparent")
@@ -1036,6 +1215,7 @@ class AccessibilityWindow(ctk.CTkToplevel):
             onvalue=True, offvalue=False,
         )
         guidance_switch.pack(anchor="w", padx=28, pady=(6, 0))
+        bind_audio_hint(guidance_switch, "Ativa ou desativa as explicações faladas de cada opção.")
 
         # Velocidade da fala
         speed_row = ctk.CTkFrame(self, fg_color="transparent")
@@ -1055,6 +1235,7 @@ class AccessibilityWindow(ctk.CTkToplevel):
         )
         self._rate_slider.set(self._work["tts_rate"])
         self._rate_slider.pack(side="left", fill="x", expand=True, padx=(10, 12))
+        bind_audio_hint(self._rate_slider, "Ajusta a velocidade da fala.")
 
         # ── Botões ────────────────────────────────────────────────────────────
         sep4 = ctk.CTkFrame(self, height=1, fg_color="gray30")
@@ -1063,30 +1244,30 @@ class AccessibilityWindow(ctk.CTkToplevel):
         btn_row = ctk.CTkFrame(self, fg_color="transparent")
         btn_row.pack(fill="x", padx=28, pady=(14, 20))
 
-        ctk.CTkButton(
+        btn_test_speech = ctk.CTkButton(
             btn_row, text="🔊 Testar fala",
             fg_color=ACCENT, hover_color="#0b2747",
             font=ctk.CTkFont(size=13), height=36,
             command=self._test_speech,
-        ).pack(side="left", padx=(0, 10))
+        )
+        btn_test_speech.pack(side="left", padx=(0, 10))
+        bind_audio_hint(btn_test_speech, "Testa se a leitura em voz alta está funcionando.")
 
-        ctk.CTkButton(
+        btn_apply = ctk.CTkButton(
             btn_row, text="Aplicar e Salvar",
             fg_color=ACCENT2, hover_color="#c73652",
             font=ctk.CTkFont(size=13, weight="bold"), height=36,
             command=self._apply,
-        ).pack(side="left")
+        )
+        btn_apply.pack(side="left")
+        bind_audio_hint(btn_apply, "Aplica e salva as configurações de acessibilidade.")
 
         self._status = ctk.CTkLabel(
             self, text="", text_color=TEXT_SEC,
             font=ctk.CTkFont(size=11),
         )
         self._status.pack(pady=(0, 10))
-
-        self._bind_audio_hint(tts_switch, "Ativa ou desativa a leitura de tela em voz alta.")
-        self._bind_audio_hint(guidance_switch, "Ativa audios que explicam as opcoes da interface.")
-        self._bind_audio_hint(self._scale_slider, "Ajusta o tamanho geral da interface para facilitar leitura.")
-        self._bind_audio_hint(self._rate_slider, "Ajusta a velocidade da voz do leitor de tela.")
+        bind_audio_hints_recursively(self, prefix="Acessibilidade")
 
     def _bind_audio_hint(self, widget, text: str):
         widget.bind("<Enter>", lambda _e, t=text: self._speak_hint(t))
