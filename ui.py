@@ -26,7 +26,7 @@ TEXT_SEC  = "#ffffff"
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Task Flow")
+        self.title("TaskFlow")
         self.geometry("1000x660")
         self.minsize(900, 600)
         self.configure(fg_color=BG_DARK)
@@ -225,8 +225,11 @@ class App(ctk.CTk):
 
 # ── Componentes reutilizáveis ─────────────────────────────────────────────────
 def section_title(parent, text):
+    # Se o parent for um card com fundo ACCENT ou ACCENT2, muda a cor do texto
+    bg = getattr(parent, 'fg_color', None)
+    text_color = "#043143" if bg in (ACCENT, ACCENT2) else "white"
     ctk.CTkLabel(parent, text=text, font=ctk.CTkFont(size=20, weight="bold"),
-                 text_color="white").pack(anchor="w", padx=28, pady=(24, 4))
+                 text_color=text_color).pack(anchor="w", padx=28, pady=(24, 4))
 
 def status_label(parent):
     lbl = ctk.CTkLabel(parent, text="", font=ctk.CTkFont(size=12), text_color=TEXT_SEC)
@@ -234,11 +237,15 @@ def status_label(parent):
     return lbl
 
 def action_btn(parent, text, command, color=None, hover_color=None):
+    fg = color or ACCENT2
+    # Se o fundo for ACCENT ou ACCENT2, texto escuro
+    text_color = "#043143" if fg in (ACCENT, ACCENT2) else None
     btn = ctk.CTkButton(
         parent, text=text, command=command,
-        fg_color=color or ACCENT2, hover_color=hover_color or BG_CARD,
+        fg_color=fg, hover_color=hover_color or BG_CARD,
         font=ctk.CTkFont(size=13, weight="bold"),
         height=36, corner_radius=8,
+        text_color=text_color
     )
     return btn
 
