@@ -247,6 +247,76 @@ def check_bills() -> list:
     return notified
 
 
+def add_bill(nome: str, valor: str, vencimento: str) -> dict:
+    import uuid
+    bills = _read_bills()
+    bill_id = str(uuid.uuid4())[:8]
+    bill = {
+        "id": bill_id,
+        "nome": nome,
+        "valor": valor,
+        "vencimento": vencimento
+    }
+    bills.append(bill)
+    
+    # Salva no CSV local
+    fieldnames = ["id", "nome", "valor", "vencimento"]
+    with open(BILLS_FILE, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(bills)
+
+    # Sincroniza Supabase em background
+    from supabase_client import supabase, run_in_background
+    def _bg_insert():
+        if supabase:
+            try:
+                row = _to_remote(bill)
+                res = supabase.table("bills").insert(row).execute()
+                if res.data:
+                    remote_id = str(res.data[0]["id"])
+                    # Atualiza o ID local
+                    current_bills = _read_bills()
+                    for cb in current_bills:
+                        if cb.get("id") == bill_id:
+                            cb["id"] = remote_id
+                    with open(BILLS_FILE, "w", newline="", encoding="utf-8") as f_inner:
+                        writer_inner = csv.DictWriter(f_inner, fieldnames=fieldnames)
+                        writer_inner.writeheader()
+                        writer_inner.writerows(current_bills)
+            except Exception as e:
+                print(f"[Supabase Error] Falha ao inserir conta: {e}")
+
+    run_in_background(_bg_insert)
+    return bill
+
+
+def delete_bill(bill_id: str) -> bool:
+    bills = _read_bills()
+    new_bills = [b for b in bills if b.get("id") != bill_id]
+    if len(new_bills) == len(bills):
+        return False
+
+    fieldnames = ["id", "nome", "valor", "vencimento"]
+    with open(BILLS_FILE, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(new_bills)
+
+    # Sincroniza Supabase em background
+    from supabase_client import run_in_background
+    def _bg_delete():
+        from supabase_client import supabase
+        if supabase and bill_id.isdigit():
+            try:
+                supabase.table("bills").delete().eq("id", int(bill_id)).execute()
+            except Exception as e:
+                print(f"[Supabase Error] Falha ao excluir conta: {e}")
+
+    run_in_background(_bg_delete)
+    return True
+
+
 if __name__ == "__main__":
     check_bills()
 

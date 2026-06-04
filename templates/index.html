@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TaskFlow - Organizador Pessoal</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
+            <div class="logo">
+                <img src="{{ url_for('static', filename='img/logo.jpeg') }}" alt="TaskFlow Logo" class="logo-img">
+                <h1>TaskFlow</h1>
+            </div>
+            
+            <nav class="nav-menu">
+                <button class="nav-item active" data-tab="tasks">
+                    <span class="nav-icon">📋</span>
+                    <span>Tarefas</span>
+                    <span class="badge" id="tasks-badge">0</span>
+                </button>
+                <button class="nav-item" data-tab="habits">
+                    <span class="nav-icon">🔄</span>
+                    <span>Hábitos</span>
+                </button>
+                <button class="nav-item" data-tab="shopping">
+                    <span class="nav-icon">🛒</span>
+                    <span>Compras</span>
+                </button>
+                <button class="nav-item" data-tab="bills">
+                    <span class="nav-icon">💳</span>
+                    <span>Contas</span>
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="status-indicator">
+                    <span class="status-dot"></span>
+                    <span>Conectado ao Supabase</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- CONTEÚDO PRINCIPAL -->
+        <main class="main-content">
+            <!-- HEADER -->
+            <header class="top-header">
+                <div class="header-title">
+                    <h2 id="page-title">Tarefas</h2>
+                    <p id="page-subtitle">Organize seu dia</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn-primary" id="btn-add">
+                        <span>+</span> Adicionar
+                    </button>
+                </div>
+            </header>
+
+            <!-- ÁREA DE CONTEÚDO DINÂMICO -->
+            <div class="content-area" id="content-area">
+                <!-- O conteúdo será injetado via JavaScript -->
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAL GENÉRICO -->
+    <div class="modal-overlay" id="modal-overlay">
+        <div class="modal" id="modal">
+            <div class="modal-header">
+                <h3 id="modal-title">Título</h3>
+                <button class="modal-close" id="modal-close">&times;</button>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <!-- Conteúdo dinâmico -->
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST NOTIFICATIONS -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="{{ url_for('static', filename='js/api.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/tasks.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/habits.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/shopping.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bills.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
