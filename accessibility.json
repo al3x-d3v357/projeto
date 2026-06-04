@@ -1,7 +1,7 @@
 {
   "high_contrast": false,
   "font_scale": 1.0,
-  "tts_enabled": true,
-  "audio_guidance_enabled": true,
+  "tts_enabled": false,
+  "audio_guidance_enabled": false,
   "tts_rate": 150
 }

@@ -17,31 +17,74 @@ def _save(tasks: list) -> None:
         json.dump(tasks, f, ensure_ascii=False, indent=2)
 
 
+# ── Tradução de Modelos ──────────────────────────────────────────────────────
+
+def _to_local(remote: dict) -> dict:
+    return {
+        "id": str(remote["id"]),
+        "title": remote["title"],
+        "source": "manual",
+        "status": "concluída" if remote.get("is_completed", False) else "pendente",
+        "created_at": remote.get("created_at") or datetime.now().isoformat(timespec="seconds"),
+        "due_date": remote.get("due_date") or None,
+        "reminder_time": remote.get("reminder_time") or None,
+        "remind_before_minutes": remote.get("advance_minutes") or 5,
+        "last_reminder_for": None
+    }
+
+
+def _to_remote(local: dict) -> dict:
+    return {
+        "title": local["title"],
+        "due_date": local.get("due_date"),
+        "reminder_time": local.get("reminder_time"),
+        "advance_minutes": int(local.get("remind_before_minutes", 5)),
+        "is_completed": local.get("status") == "concluída"
+    }
+
+
 # ── Sincronização Supabase ───────────────────────────────────────────────────
 
-def _bg_insert(task):
+def _bg_insert(task, local_id):
     from supabase_client import supabase
     if supabase:
         try:
-            supabase.table("tasks").insert(task).execute()
+            row = _to_remote(task)
+            res = supabase.table("tasks").insert(row).execute()
+            if res.data:
+                remote_id = str(res.data[0]["id"])
+                # Atualiza o ID local no arquivo
+                tasks = _load()
+                for t in tasks:
+                    if t["id"] == local_id:
+                        t["id"] = remote_id
+                _save(tasks)
         except Exception as e:
             print(f"[Supabase Error] Falha ao inserir tarefa: {e}")
 
 
 def _bg_update(task_id, data):
+    if not task_id.isdigit():
+        return
     from supabase_client import supabase
     if supabase:
         try:
-            supabase.table("tasks").update(data).eq("id", task_id).execute()
+            remote_data = {}
+            if "status" in data:
+                remote_data["is_completed"] = (data["status"] == "concluída")
+            if remote_data:
+                supabase.table("tasks").update(remote_data).eq("id", int(task_id)).execute()
         except Exception as e:
             print(f"[Supabase Error] Falha ao atualizar tarefa: {e}")
 
 
 def _bg_delete(task_id):
+    if not task_id.isdigit():
+        return
     from supabase_client import supabase
     if supabase:
         try:
-            supabase.table("tasks").delete().eq("id", task_id).execute()
+            supabase.table("tasks").delete().eq("id", int(task_id)).execute()
         except Exception as e:
             print(f"[Supabase Error] Falha ao excluir tarefa: {e}")
 
@@ -57,13 +100,20 @@ def sync_with_supabase():
             res = supabase.table("tasks").select("*").execute()
             remote_tasks = res.data
             if remote_tasks:
-                _save(remote_tasks)
+                local_format_tasks = [_to_local(t) for t in remote_tasks]
+                _save(local_format_tasks)
                 print("[Sync Tasks] Sincronizado do Supabase para o cache local.")
             else:
                 local_tasks = _load()
                 if local_tasks:
                     print("[Sync Tasks] Supabase está vazio. Enviando dados locais...")
-                    supabase.table("tasks").insert(local_tasks).execute()
+                    upload_list = [_to_remote(t) for t in local_tasks]
+                    res_insert = supabase.table("tasks").insert(upload_list).execute()
+                    if res_insert.data:
+                        for i, inserted in enumerate(res_insert.data):
+                            if i < len(local_tasks):
+                                local_tasks[i]["id"] = str(inserted["id"])
+                        _save(local_tasks)
                     print("[Sync Tasks] Dados locais enviados com sucesso.")
         except Exception as e:
             print(f"[Sync Tasks] Falha na sincronização: {e}")
@@ -82,8 +132,9 @@ def add_task(
 ) -> dict:
     """Adiciona uma nova tarefa. Retorna a tarefa criada."""
     tasks = _load()
+    local_id = str(uuid.uuid4())[:8]
     task = {
-        "id": str(uuid.uuid4())[:8],
+        "id": local_id,
         "title": title,
         "source": source,
         "status": "pendente",
@@ -98,7 +149,7 @@ def add_task(
 
     # Sincroniza em background
     from supabase_client import run_in_background
-    run_in_background(_bg_insert, task)
+    run_in_background(_bg_insert, task, local_id)
 
     return task
 
@@ -115,8 +166,7 @@ def complete_task(task_id: str) -> bool:
             # Sincroniza em background
             from supabase_client import run_in_background
             run_in_background(_bg_update, task_id, {
-                "status": "concluída",
-                "completed_at": task["completed_at"]
+                "status": "concluída"
             })
             return True
     return False
@@ -247,10 +297,5 @@ def check_task_reminders(now: datetime = None) -> list:
 
     if changed:
         _save(tasks)
-        # Sincroniza o last_reminder_for em background
-        from supabase_client import run_in_background
-        for task in due_now:
-            run_in_background(_bg_update, task["id"], {"last_reminder_for": task["last_reminder_for"]})
-
     return due_now
 

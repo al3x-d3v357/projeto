@@ -1,6 +1,6 @@
 [
   {
-    "id": "f233e111",
+    "id": "1",
     "name": "arroz",
     "quantity": "1",
     "price": "10,00",
@@ -8,7 +8,7 @@
     "created_at": "2026-05-23T15:48:13"
   },
   {
-    "id": "bfb5bb4c",
+    "id": "2",
     "name": "feijão",
     "quantity": "1",
     "price": "7,00",
@@ -16,7 +16,7 @@
     "created_at": "2026-05-23T15:49:08"
   },
   {
-    "id": "c0c1066f",
+    "id": "3",
     "name": "Leite",
     "quantity": "3",
     "price": "15,00",

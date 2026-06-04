@@ -1,6 +1,6 @@
 [
   {
-    "id": "876a4661",
+    "id": "1",
     "title": "beber água",
     "interval_minutes": 120,
     "enabled": true,
@@ -8,7 +8,7 @@
     "last_reminder_at": "2026-06-04T18:07:45"
   },
   {
-    "id": "346bb768",
+    "id": "2",
     "title": "Corrida diária",
     "interval_minutes": 90,
     "enabled": true,
@@ -16,7 +16,7 @@
     "last_reminder_at": "2026-06-04T18:07:45"
   },
   {
-    "id": "82383f2d",
+    "id": "3",
     "title": "Agachamento",
     "interval_minutes": 300,
     "enabled": true,
