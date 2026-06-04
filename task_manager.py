@@ -17,6 +17,62 @@ def _save(tasks: list) -> None:
         json.dump(tasks, f, ensure_ascii=False, indent=2)
 
 
+# ── Sincronização Supabase ───────────────────────────────────────────────────
+
+def _bg_insert(task):
+    from supabase_client import supabase
+    if supabase:
+        try:
+            supabase.table("tasks").insert(task).execute()
+        except Exception as e:
+            print(f"[Supabase Error] Falha ao inserir tarefa: {e}")
+
+
+def _bg_update(task_id, data):
+    from supabase_client import supabase
+    if supabase:
+        try:
+            supabase.table("tasks").update(data).eq("id", task_id).execute()
+        except Exception as e:
+            print(f"[Supabase Error] Falha ao atualizar tarefa: {e}")
+
+
+def _bg_delete(task_id):
+    from supabase_client import supabase
+    if supabase:
+        try:
+            supabase.table("tasks").delete().eq("id", task_id).execute()
+        except Exception as e:
+            print(f"[Supabase Error] Falha ao excluir tarefa: {e}")
+
+
+def sync_with_supabase():
+    """Busca tarefas do Supabase para atualizar o cache local, ou envia o cache se a nuvem estiver vazia."""
+    from supabase_client import supabase, run_in_background
+    if not supabase:
+        return
+
+    def _sync():
+        try:
+            res = supabase.table("tasks").select("*").execute()
+            remote_tasks = res.data
+            if remote_tasks:
+                _save(remote_tasks)
+                print("[Sync Tasks] Sincronizado do Supabase para o cache local.")
+            else:
+                local_tasks = _load()
+                if local_tasks:
+                    print("[Sync Tasks] Supabase está vazio. Enviando dados locais...")
+                    supabase.table("tasks").insert(local_tasks).execute()
+                    print("[Sync Tasks] Dados locais enviados com sucesso.")
+        except Exception as e:
+            print(f"[Sync Tasks] Falha na sincronização: {e}")
+
+    run_in_background(_sync)
+
+
+# ── CRUD e Métodos ──────────────────────────────────────────────────────────
+
 def add_task(
     title: str,
     source: str = "manual",
@@ -39,6 +95,11 @@ def add_task(
     }
     tasks.append(task)
     _save(tasks)
+
+    # Sincroniza em background
+    from supabase_client import run_in_background
+    run_in_background(_bg_insert, task)
+
     return task
 
 
@@ -50,6 +111,13 @@ def complete_task(task_id: str) -> bool:
             task["status"] = "concluída"
             task["completed_at"] = datetime.now().isoformat(timespec="seconds")
             _save(tasks)
+
+            # Sincroniza em background
+            from supabase_client import run_in_background
+            run_in_background(_bg_update, task_id, {
+                "status": "concluída",
+                "completed_at": task["completed_at"]
+            })
             return True
     return False
 
@@ -61,6 +129,10 @@ def delete_task(task_id: str) -> bool:
     if len(new_tasks) == len(tasks):
         return False
     _save(new_tasks)
+
+    # Sincroniza em background
+    from supabase_client import run_in_background
+    run_in_background(_bg_delete, task_id)
     return True
 
 
@@ -168,7 +240,6 @@ def check_task_reminders(now: datetime = None) -> list:
         if task.get("last_reminder_for") == reminder_key:
             continue
 
-        # Notifica da janela de lembrete até o horário da tarefa.
         if reminder_dt <= now <= due_dt:
             task["last_reminder_for"] = reminder_key
             due_now.append(task)
@@ -176,5 +247,10 @@ def check_task_reminders(now: datetime = None) -> list:
 
     if changed:
         _save(tasks)
+        # Sincroniza o last_reminder_for em background
+        from supabase_client import run_in_background
+        for task in due_now:
+            run_in_background(_bg_update, task["id"], {"last_reminder_for": task["last_reminder_for"]})
 
     return due_now
+

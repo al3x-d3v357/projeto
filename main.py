@@ -3,6 +3,9 @@ import time
 import threading
 import agenda_generator
 import habits_manager
+import task_manager
+import shopping_list_manager
+import bill_reminder
 from ui import App
 
 
@@ -24,6 +27,13 @@ def _setup_scheduler():
 
 
 def main():
+    # Sincronização inicial com o Supabase (roda em background thread internamente)
+    print("[Supabase] Iniciando sincronização global...")
+    task_manager.sync_with_supabase()
+    habits_manager.sync_with_supabase()
+    shopping_list_manager.sync_with_supabase()
+    bill_reminder.sync_with_supabase()
+
     _setup_scheduler()
     app = App()
     app.mainloop()

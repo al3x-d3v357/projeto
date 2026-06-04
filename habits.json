@@ -1,1 +1,26 @@
-[]
+[
+  {
+    "id": "876a4661",
+    "title": "beber água",
+    "interval_minutes": 120,
+    "enabled": true,
+    "created_at": "2026-05-23T15:53:30",
+    "last_reminder_at": "2026-06-04T18:07:45"
+  },
+  {
+    "id": "346bb768",
+    "title": "Corrida diária",
+    "interval_minutes": 90,
+    "enabled": true,
+    "created_at": "2026-05-23T15:53:52",
+    "last_reminder_at": "2026-06-04T18:07:45"
+  },
+  {
+    "id": "82383f2d",
+    "title": "Agachamento",
+    "interval_minutes": 300,
+    "enabled": true,
+    "created_at": "2026-05-23T15:54:09",
+    "last_reminder_at": "2026-06-04T18:07:45"
+  }
+]

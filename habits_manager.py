@@ -19,6 +19,62 @@ def _save(habits: list) -> None:
         json.dump(habits, f, ensure_ascii=False, indent=2)
 
 
+# ── Sincronização Supabase ───────────────────────────────────────────────────
+
+def _bg_insert(habit):
+    from supabase_client import supabase
+    if supabase:
+        try:
+            supabase.table("habits").insert(habit).execute()
+        except Exception as e:
+            print(f"[Supabase Error] Falha ao inserir hábito: {e}")
+
+
+def _bg_update(habit_id, data):
+    from supabase_client import supabase
+    if supabase:
+        try:
+            supabase.table("habits").update(data).eq("id", habit_id).execute()
+        except Exception as e:
+            print(f"[Supabase Error] Falha ao atualizar hábito: {e}")
+
+
+def _bg_delete(habit_id):
+    from supabase_client import supabase
+    if supabase:
+        try:
+            supabase.table("habits").delete().eq("id", habit_id).execute()
+        except Exception as e:
+            print(f"[Supabase Error] Falha ao excluir hábito: {e}")
+
+
+def sync_with_supabase():
+    """Busca hábitos do Supabase para atualizar o cache local, ou envia o cache se a nuvem estiver vazia."""
+    from supabase_client import supabase, run_in_background
+    if not supabase:
+        return
+
+    def _sync():
+        try:
+            res = supabase.table("habits").select("*").execute()
+            remote_habits = res.data
+            if remote_habits:
+                _save(remote_habits)
+                print("[Sync Habits] Sincronizado do Supabase para o cache local.")
+            else:
+                local_habits = _load()
+                if local_habits:
+                    print("[Sync Habits] Supabase está vazio. Enviando dados locais...")
+                    supabase.table("habits").insert(local_habits).execute()
+                    print("[Sync Habits] Dados locais enviados com sucesso.")
+        except Exception as e:
+            print(f"[Sync Habits] Falha na sincronização: {e}")
+
+    run_in_background(_sync)
+
+
+# ── CRUD e Métodos ──────────────────────────────────────────────────────────
+
 def add_habit(title: str, interval_minutes: int = 120) -> dict:
     habits = _load()
     habit = {
@@ -31,6 +87,10 @@ def add_habit(title: str, interval_minutes: int = 120) -> dict:
     }
     habits.append(habit)
     _save(habits)
+
+    from supabase_client import run_in_background
+    run_in_background(_bg_insert, habit)
+
     return habit
 
 
@@ -44,6 +104,10 @@ def delete_habit(habit_id: str) -> bool:
     if len(new_habits) == len(habits):
         return False
     _save(new_habits)
+
+    from supabase_client import run_in_background
+    run_in_background(_bg_delete, habit_id)
+
     return True
 
 
@@ -53,6 +117,9 @@ def toggle_habit(habit_id: str) -> bool:
         if h["id"] == habit_id:
             h["enabled"] = not h.get("enabled", True)
             _save(habits)
+
+            from supabase_client import run_in_background
+            run_in_background(_bg_update, habit_id, {"enabled": h["enabled"]})
             return True
     return False
 
@@ -104,6 +171,10 @@ def check_habits_and_notify(verbose: bool = True) -> list:
 
     if notified:
         _save(habits)
+        # Sincroniza o last_reminder_at dos hábitos notificados
+        from supabase_client import run_in_background
+        for h in notified:
+            run_in_background(_bg_update, h["id"], {"last_reminder_at": h["last_reminder_at"]})
     elif verbose:
         print("[Hábitos] Nenhum hábito para lembrar agora.")
 
@@ -124,7 +195,11 @@ def send_habit_reminder_now(habit_id: str) -> bool:
                 )
                 h["last_reminder_at"] = now
                 _save(habits)
+
+                from supabase_client import run_in_background
+                run_in_background(_bg_update, habit_id, {"last_reminder_at": h["last_reminder_at"]})
                 return True
             except Exception:
                 return False
     return False
+

@@ -1,1 +1,26 @@
-[]
+[
+  {
+    "id": "f233e111",
+    "name": "arroz",
+    "quantity": "1",
+    "price": "10,00",
+    "checked": false,
+    "created_at": "2026-05-23T15:48:13"
+  },
+  {
+    "id": "bfb5bb4c",
+    "name": "feijão",
+    "quantity": "1",
+    "price": "7,00",
+    "checked": false,
+    "created_at": "2026-05-23T15:49:08"
+  },
+  {
+    "id": "c0c1066f",
+    "name": "Leite",
+    "quantity": "3",
+    "price": "15,00",
+    "checked": false,
+    "created_at": "2026-05-23T15:49:46"
+  }
+]
