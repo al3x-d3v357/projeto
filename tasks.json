@@ -1,13 +1,1 @@
-[
-  {
-    "id": "7",
-    "title": "teste",
-    "source": "manual",
-    "status": "pendente",
-    "created_at": "2026-06-04T20:34:42",
-    "due_date": null,
-    "reminder_time": null,
-    "remind_before_minutes": 5,
-    "last_reminder_for": null
-  }
-]
+[]
