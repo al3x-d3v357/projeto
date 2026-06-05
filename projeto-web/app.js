@@ -1,10 +1,57 @@
 // ==========================================
+// CAPTURA GLOBAL DE ERROS (DEPURAÇÃO)
+// ==========================================
+window.onerror = function(message, source, lineno, colno, error) {
+    console.error("Erro global capturado:", message, "na linha:", lineno);
+    const content = document.getElementById('content-area');
+    if (content) {
+        content.innerHTML = `
+            <div class="empty-state" style="border-color: var(--danger); padding: 40px 20px;">
+                <div class="empty-state-icon" style="opacity: 1; color: var(--danger);">⚠️</div>
+                <h3>Erro no Script da Aplicação</h3>
+                <p style="margin-top: 10px; font-size: 13px; color: var(--text-muted);">
+                    Ocorreu um erro ao executar a lógica do aplicativo. Detalhes:
+                </p>
+                <p style="color: var(--danger); font-family: monospace; background: rgba(248, 113, 113, 0.1); padding: 12px; border-radius: 8px; margin-top: 12px; font-size: 12px; text-align: left; word-break: break-all;">
+                    ${escapeHtml(message)} (linha ${lineno}:${colno})
+                </p>
+                <button class="btn-primary" onclick="window.location.reload()" style="margin: 20px auto 0;">Recarregar Página</button>
+            </div>
+        `;
+    }
+    return false;
+};
+
+// ==========================================
 // CONFIGURAÇÃO DO SUPABASE
 // ==========================================
 const SUPABASE_URL = 'https://ikknxtvmdoykppnmnryx.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_aA_Bm7tCXzMynYZ5u4nSjw_wjAzHt8L';
 
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let supabaseClient = null;
+let initError = null;
+
+try {
+    // Usamos 'supabaseSdk' para referenciar o objeto global do CDN
+    const supabaseSdk = window.supabase || (typeof supabase !== 'undefined' ? supabase : null);
+    
+    if (!supabaseSdk) {
+        throw new Error(
+            "Não foi possível carregar a biblioteca do Supabase da CDN. " +
+            "Verifique sua conexão com a internet ou se algum bloqueador de anúncios/rastreadores está bloqueando o domínio 'jsdelivr.net'."
+        );
+    }
+    
+    // Armazenamos a instância em 'supabaseClient' para evitar conflito com a global 'supabase' do CDN
+    supabaseClient = supabaseSdk.createClient(SUPABASE_URL, SUPABASE_KEY, {
+        auth: {
+            persistSession: false
+        }
+    });
+} catch (error) {
+    console.error("Erro na inicialização do Supabase:", error);
+    initError = error;
+}
 
 // ==========================================
 // ESTADO GLOBAL
@@ -42,6 +89,8 @@ const tabConfig = {
 // NAVEGAÇÃO
 // ==========================================
 function switchTab(tabName) {
+    if (initError) return;
+    
     currentTab = tabName;
     
     document.querySelectorAll('.nav-item').forEach(item => {
@@ -56,10 +105,6 @@ function switchTab(tabName) {
     config.load();
 }
 
-document.querySelectorAll('.nav-item').forEach(item => {
-    item.addEventListener('click', () => switchTab(item.dataset.tab));
-});
-
 // ==========================================
 // MODAL HELPERS
 // ==========================================
@@ -73,16 +118,12 @@ function closeModal() {
     document.getElementById('modal-overlay').classList.remove('active');
 }
 
-document.getElementById('modal-close').addEventListener('click', closeModal);
-document.getElementById('modal-overlay').addEventListener('click', (e) => {
-    if (e.target === e.currentTarget) closeModal();
-});
-
 // ==========================================
 // TOAST NOTIFICATIONS
 // ==========================================
 function showToast(message, type = 'success') {
     const container = document.getElementById('toast-container');
+    if (!container) return;
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
     toast.textContent = message;
@@ -97,15 +138,20 @@ function showToast(message, type = 'success') {
 // UTILS & TIMEZONE-SAFE DATE PARSING
 // ==========================================
 function escapeHtml(text) {
+    if (typeof text !== 'string') {
+        text = text ? String(text) : '';
+    }
     const div = document.createElement('div');
-    div.textContent = text || '';
+    div.textContent = text;
     return div.innerHTML;
 }
 
-/**
- * Parses a date string safely to prevent timezone-related off-by-one errors.
- * Treats YYYY-MM-DD as local midnight instead of UTC.
- */
+function getErrorMessage(error) {
+    if (!error) return "Erro desconhecido";
+    if (typeof error === 'string') return error;
+    return error.message || error.details || JSON.stringify(error);
+}
+
 function parseLocalDate(dateStr) {
     if (!dateStr) return null;
     if (dateStr.includes('T')) {
@@ -149,7 +195,7 @@ async function loadTasks() {
     content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
     
     try {
-        const { data: tasks, error } = await supabase
+        const { data: tasks, error } = await supabaseClient
             .from('tasks')
             .select('*')
             .order('due_date', { ascending: true });
@@ -186,7 +232,8 @@ async function loadTasks() {
             </div>
         `).join('');
     } catch (error) {
-        content.innerHTML = `<div class="empty-state"><h3>Erro ao carregar: ${error.message}</h3></div>`;
+        console.error("Erro em loadTasks:", error);
+        content.innerHTML = `<div class="empty-state"><h3>Erro ao carregar: ${escapeHtml(getErrorMessage(error))}</h3></div>`;
     }
 }
 
@@ -226,20 +273,20 @@ function showAddTaskModal() {
         };
         
         try {
-            const { error } = await supabase.from('tasks').insert([data]);
+            const { error } = await supabaseClient.from('tasks').insert([data]);
             if (error) throw error;
             closeModal();
             showToast('Tarefa criada com sucesso!');
             loadTasks();
         } catch (error) {
-            showToast('Erro ao criar tarefa', 'error');
+            showToast('Erro ao criar tarefa: ' + getErrorMessage(error), 'error');
         }
     };
 }
 
 async function completeTask(id) {
     try {
-        const { error } = await supabase.from('tasks').update({ is_completed: true }).eq('id', id);
+        const { error } = await supabaseClient.from('tasks').update({ is_completed: true }).eq('id', id);
         if (error) throw error;
         showToast('Tarefa concluída!');
         loadTasks();
@@ -251,7 +298,7 @@ async function completeTask(id) {
 async function deleteTask(id) {
     if (!confirm('Deseja realmente excluir esta tarefa?')) return;
     try {
-        const { error } = await supabase.from('tasks').delete().eq('id', id);
+        const { error } = await supabaseClient.from('tasks').delete().eq('id', id);
         if (error) throw error;
         showToast('Tarefa excluída!');
         loadTasks();
@@ -268,7 +315,7 @@ async function loadHabits() {
     content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
     
     try {
-        const { data: habits, error } = await supabase.from('habits').select('*');
+        const { data: habits, error } = await supabaseClient.from('habits').select('*');
         if (error) throw error;
         
         if (!habits || habits.length === 0) {
@@ -297,7 +344,8 @@ async function loadHabits() {
             </div>
         `).join('');
     } catch (error) {
-        content.innerHTML = `<div class="empty-state"><h3>Erro ao carregar: ${error.message}</h3></div>`;
+        console.error("Erro em loadHabits:", error);
+        content.innerHTML = `<div class="empty-state"><h3>Erro ao carregar: ${escapeHtml(getErrorMessage(error))}</h3></div>`;
     }
 }
 
@@ -329,13 +377,13 @@ function showAddHabitModal() {
         };
         
         try {
-            const { error } = await supabase.from('habits').insert([data]);
+            const { error } = await supabaseClient.from('habits').insert([data]);
             if (error) throw error;
             closeModal();
             showToast('Hábito criado com sucesso!');
             loadHabits();
         } catch (error) {
-            showToast('Erro ao criar hábito', 'error');
+            showToast('Erro ao criar hábito: ' + getErrorMessage(error), 'error');
         }
     };
 }
@@ -347,7 +395,7 @@ async function remindHabit(id) {
 async function deleteHabit(id) {
     if (!confirm('Deseja excluir este hábito?')) return;
     try {
-        const { error } = await supabase.from('habits').delete().eq('id', id);
+        const { error } = await supabaseClient.from('habits').delete().eq('id', id);
         if (error) throw error;
         showToast('Hábito excluído!');
         loadHabits();
@@ -364,7 +412,7 @@ async function loadShopping() {
     content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
     
     try {
-        const { data: items, error } = await supabase.from('shopping_list').select('*');
+        const { data: items, error } = await supabaseClient.from('shopping_list').select('*');
         if (error) throw error;
         
         if (!items || items.length === 0) {
@@ -407,7 +455,8 @@ async function loadShopping() {
             ` : ''}
         `;
     } catch (error) {
-        content.innerHTML = `<div class="empty-state"><h3>Erro ao carregar: ${error.message}</h3></div>`;
+        console.error("Erro em loadShopping:", error);
+        content.innerHTML = `<div class="empty-state"><h3>Erro ao carregar: ${escapeHtml(getErrorMessage(error))}</h3></div>`;
     }
 }
 
@@ -474,23 +523,23 @@ function showAddShoppingModal() {
         };
         
         try {
-            const { error } = await supabase.from('shopping_list').insert([data]);
+            const { error } = await supabaseClient.from('shopping_list').insert([data]);
             if (error) throw error;
             closeModal();
             showToast('Item adicionado!');
             loadShopping();
         } catch (error) {
-            showToast('Erro ao adicionar item', 'error');
+            showToast('Erro ao adicionar item: ' + getErrorMessage(error), 'error');
         }
     };
 }
 
 async function toggleItem(id) {
     try {
-        const { data: item, error: fetchError } = await supabase.from('shopping_list').select('*').eq('id', id).single();
+        const { data: item, error: fetchError } = await supabaseClient.from('shopping_list').select('*').eq('id', id).single();
         if (fetchError) throw fetchError;
         
-        const { error } = await supabase.from('shopping_list').update({ is_bought: !item.is_bought }).eq('id', id);
+        const { error } = await supabaseClient.from('shopping_list').update({ is_bought: !item.is_bought }).eq('id', id);
         if (error) throw error;
         loadShopping();
     } catch (error) {
@@ -501,7 +550,7 @@ async function toggleItem(id) {
 async function deleteItem(id) {
     if (!confirm('Deseja excluir este item?')) return;
     try {
-        const { error } = await supabase.from('shopping_list').delete().eq('id', id);
+        const { error } = await supabaseClient.from('shopping_list').delete().eq('id', id);
         if (error) throw error;
         showToast('Item excluído!');
         loadShopping();
@@ -513,7 +562,7 @@ async function deleteItem(id) {
 async function clearBought() {
     if (!confirm('Limpar todos os itens comprados?')) return;
     try {
-        const { error } = await supabase.from('shopping_list').delete().eq('is_bought', true);
+        const { error } = await supabaseClient.from('shopping_list').delete().eq('is_bought', true);
         if (error) throw error;
         showToast('Itens comprados removidos!');
         loadShopping();
@@ -530,7 +579,7 @@ async function loadBills() {
     content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
     
     try {
-        const { data: bills, error } = await supabase.from('bills').select('*').order('due_date', { ascending: true });
+        const { data: bills, error } = await supabaseClient.from('bills').select('*').order('due_date', { ascending: true });
         if (error) throw error;
         
         if (!bills || bills.length === 0) {
@@ -581,7 +630,8 @@ async function loadBills() {
             }).join('')}
         `;
     } catch (error) {
-        content.innerHTML = `<div class="empty-state"><h3>Erro ao carregar: ${error.message}</h3></div>`;
+        console.error("Erro em loadBills:", error);
+        content.innerHTML = `<div class="empty-state"><h3>Erro ao carregar: ${escapeHtml(getErrorMessage(error))}</h3></div>`;
     }
 }
 
@@ -620,13 +670,13 @@ function showAddBillModal() {
         };
         
         try {
-            const { error } = await supabase.from('bills').insert([data]);
+            const { error } = await supabaseClient.from('bills').insert([data]);
             if (error) throw error;
             closeModal();
             showToast('Conta adicionada com sucesso!');
             loadBills();
         } catch (error) {
-            showToast('Erro ao adicionar conta', 'error');
+            showToast('Erro ao adicionar conta: ' + getErrorMessage(error), 'error');
         }
     };
 }
@@ -634,7 +684,7 @@ function showAddBillModal() {
 async function deleteBill(id) {
     if (!confirm('Deseja excluir esta conta?')) return;
     try {
-        const { error } = await supabase.from('bills').delete().eq('id', id);
+        const { error } = await supabaseClient.from('bills').delete().eq('id', id);
         if (error) throw error;
         showToast('Conta excluída!');
         loadBills();
@@ -644,6 +694,44 @@ async function deleteBill(id) {
 }
 
 // ==========================================
-// INICIALIZAÇÃO
+// INICIALIZAÇÃO E ASSINATURA DE EVENTOS
 // ==========================================
-switchTab('tasks');
+document.addEventListener('DOMContentLoaded', () => {
+    const closeBtn = document.getElementById('modal-close');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closeModal);
+    }
+    
+    const overlay = document.getElementById('modal-overlay');
+    if (overlay) {
+        overlay.addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) closeModal();
+        });
+    }
+
+    document.querySelectorAll('.nav-menu .nav-item').forEach(item => {
+        item.addEventListener('click', () => switchTab(item.dataset.tab));
+    });
+
+    if (initError) {
+        const content = document.getElementById('content-area');
+        if (content) {
+            content.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">⚠️</div>
+                    <h3>Erro ao Inicializar</h3>
+                    <p style="color: var(--danger); margin-top: 10px;">${escapeHtml(initError.message)}</p>
+                    <button class="btn-primary" onclick="window.location.reload()" style="margin: 20px auto 0;">Tentar Novamente</button>
+                </div>
+            `;
+        }
+        const statusDot = document.querySelector('.status-dot');
+        if (statusDot) {
+            statusDot.style.background = 'var(--danger)';
+            statusDot.style.boxShadow = '0 0 8px var(--danger)';
+            statusDot.nextElementSibling.textContent = 'Erro de Conexão';
+        }
+    } else {
+        switchTab('tasks');
+    }
+});
